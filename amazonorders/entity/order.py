@@ -68,7 +68,7 @@ class Order(Parsable):
         #: number from the details page (the ``order_number`` parameter is used as a fallback in that case).
         self.order_number: Optional[str] = clone.order_number if clone else self.safe_simple_parse(
             selector=self.config.selectors.FIELD_ORDER_NUMBER_SELECTOR,
-            required=not self.cancelled,
+            required=not self.cancelled and order_number is None,
             prefix_split="#",
             prefix_split_fuzzy=True) or order_number
         #: The Order details link.

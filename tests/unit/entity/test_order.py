@@ -6,6 +6,7 @@ from unittest.mock import patch
 
 from bs4 import BeautifulSoup
 
+from amazonorders import util
 from amazonorders.conf import AmazonOrdersConfig
 from amazonorders.entity.order import Order
 from amazonorders.exception import AmazonOrdersError
@@ -31,6 +32,30 @@ class TestOrder(UnitTestCase):
         self.assertIsNone(order.refund_total)
         self.assertIsNone(order.subscription_discount)
         self.assertEqual(order.grand_total, 7777.99)
+
+    def test_order_whole_foods_full_details_without_clone(self):
+        # GIVEN a Whole Foods Market in-store (FOPO) details page parsed standalone, as a clone-less
+        # consumer (e.g. a browser-extension collector) does: only the caller-supplied order_number,
+        # no history clone. The page lists items but does not carry the Amazon order number in its
+        # text selectors, so the caller's order_number must be honored rather than required from the page.
+        with open(os.path.join(self.RESOURCES_DIR, "orders", "order-details-fopo-113-4055495-4107437.html"),
+                  "r",
+                  encoding="utf-8") as f:
+            parsed = BeautifulSoup(f.read(), self.test_config.bs4_parser)
+        tag = util.select_one(parsed, self.test_config.selectors.ORDER_DETAILS_ENTITY_SELECTOR)
+
+        # WHEN
+        order = Order(tag, self.test_config, full_details=True, order_number="113-4055495-4107437")
+
+        # THEN
+        self.assertEqual("113-4055495-4107437", order.order_number)
+        self.assertTrue(order.is_whole_foods)
+        self.assertEqual(25.71, order.grand_total)
+        self.assertEqual(27.96, order.subtotal)
+        self.assertEqual(0.54, order.estimated_tax)
+        self.assertEqual("Visa", order.payment_method)
+        self.assertEqual(9790, order.payment_method_last_4)
+        self.assertEqual(3, len(order.items))
 
     def test_order_promotion_applied(self):
         # GIVEN
