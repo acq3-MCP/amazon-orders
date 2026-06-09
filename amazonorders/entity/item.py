@@ -2,11 +2,13 @@ __copyright__ = "Copyright (c) 2024-2025 Alex Laird"
 __license__ = "MIT"
 
 import logging
+import re
 from datetime import date
 from typing import Optional, TypeVar
 
 from bs4 import Tag
 
+from amazonorders import util
 from amazonorders.conf import AmazonOrdersConfig
 from amazonorders.entity.parsable import Parsable
 from amazonorders.entity.seller import Seller
@@ -57,9 +59,9 @@ class Item(Parsable):
         self.image_link: Optional[str] = self.safe_simple_parse(
             selector=self.config.selectors.FIELD_ITEM_IMG_LINK_SELECTOR,
             attr_name="src")
-        #: The Item quantity.
-        self.quantity: Optional[int] = self.safe_simple_parse(
-            selector=self.config.selectors.FIELD_ITEM_QUANTITY_SELECTOR)
+        #: The Item quantity. For items sold by weight (e.g. Whole Foods Market produce priced per
+        #: pound, rendered as "Qty: 0.31 lb"), which have no whole-unit count, this is ``None``.
+        self.quantity: Optional[int] = self.safe_parse(self._parse_quantity)
 
     def __repr__(self) -> str:
         return f"<Item: \"{self.title}\">"
@@ -70,3 +72,21 @@ class Item(Parsable):
     def __lt__(self,
                other: ItemEntity) -> bool:
         return self.title < other.title
+
+    def _parse_quantity(self) -> Optional[int]:
+        value = self.simple_parse(self.config.selectors.FIELD_ITEM_QUANTITY_SELECTOR)
+        if isinstance(value, int):
+            return value
+        if isinstance(value, str):
+            match = re.fullmatch(r"\s*(\d+)\s*", value)
+            if match:
+                return int(match.group(1))
+
+        # Whole Foods Market line items render quantity as "Qty: 1" (a whole count) or "Qty: 0.31 lb"
+        # (sold by weight, which has no integer quantity).
+        for tag in util.select(self.parsed, self.config.selectors.FIELD_ITEM_WHOLE_FOODS_QUANTITY_SELECTOR):
+            match = re.fullmatch(r"Qty:\s*(\d+)", tag.get_text(strip=True))
+            if match:
+                return int(match.group(1))
+
+        return None

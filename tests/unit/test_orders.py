@@ -430,6 +430,10 @@ class TestOrders(UnitTestCase):
         self.assertEqual(7.75, gruyere.price)
         self.assertTrue(gruyere.link.endswith("/dp/B07887281X?ref_=wfmInStore_food_od_product_details"))
         self.assertIsNotNone(gruyere.image_link)
+        self.assertIsNone(gruyere.quantity)  # sold by weight (Qty: 0.31 lb), so no whole-unit count
+        croissants = next(item for item in fopo_order.items
+                          if item.title.startswith("Whole Foods Market, Croissant"))
+        self.assertEqual(1, croissants.quantity)
 
     @responses.activate
     def test_get_order_history_full_details_unsupported_type(self):

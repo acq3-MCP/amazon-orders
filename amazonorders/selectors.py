@@ -131,6 +131,9 @@ class Selectors:
     FIELD_ITEM_QUANTITY_SELECTOR = [".od-item-view-qty",
                                     "span.item-view-qty",
                                     "span.product-image__qty"]
+    # Whole Foods Market in-store (FOPO) line items render quantity as "Qty: 1" / "Qty: 0.31 lb"; the
+    # whole-count value (if any) is extracted from the matching span in ``Item._parse_quantity``.
+    FIELD_ITEM_WHOLE_FOODS_QUANTITY_SELECTOR = ["span.a-size-small"]
     FIELD_ITEM_TITLE_SELECTOR = ["[data-component='itemTitle']",
                                  ".yohtmlc-item a", ".yohtmlc-product-title",
                                  "div.a-column.a-span10 > a"]
