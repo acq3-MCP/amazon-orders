@@ -6,6 +6,17 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased](https://github.com/alexdlaird/amazon-orders/compare/4.3.1...HEAD)
 
+### Added
+
+- `Order.is_whole_foods`, identifying Whole Foods Market purchases (in-store/FOPO purchases and Whole Foods receipt orders).
+- `Order.item_count`, the number of items in a purchase when Amazon summarizes the count instead of listing the items (e.g. Whole Foods Market orders).
+- Full-details support for Whole Foods Market in-store purchases: when `full_details=True`, these orders are fetched from their dedicated `/fopo/order-details` page (which the standard order-details endpoint does not serve) and populate `items` (title, price, image, link, and whole-unit `quantity`), `subtotal`, `estimated_tax`, `payment_method`, and `payment_method_last_4`.
+
+### Changed
+
+- `Order.grand_total` is now populated for Whole Foods Market orders from the order history page (previously skipped as an unsupported order type).
+- `Item.link` is now optional (`None` for line items without an Amazon detail page, such as ASINLESS Whole Foods Market items) rather than raising when no link is present.
+
 ## [4.3.1](https://github.com/alexdlaird/amazon-orders/compare/4.3.0...4.3.1) - 2026-06-07
 
 ### Added
@@ -17,13 +28,6 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - `AmazonOrders.get_invoice()` to fetch an Order's print-friendly invoice page, returning the response (including its parsed HTML) for rendering or printing.
 - `AmazonTransactions.get_transactions()` `order_id` parameter to scope results to a single Order server-side via Amazon's `transactionTag` filter, bypassing the `days` window.
-- `Order.is_whole_foods`, identifying Whole Foods Market purchases (in-store/FOPO purchases and Whole Foods receipt orders).
-- `Order.item_count`, the number of items in a purchase when Amazon summarizes the count instead of listing the items (e.g. Whole Foods Market orders).
-- Full-details support for Whole Foods Market in-store purchases: when `full_details=True`, these orders are fetched from their dedicated `/fopo/order-details` page (which the standard order-details endpoint does not serve) and populate `items` (title, price, image, link, and whole-unit `quantity`), `subtotal`, and `estimated_tax`.
-
-### Changed
-
-- `Order.grand_total` is now populated for Whole Foods Market orders from the order history page (previously skipped as an unsupported order type).
 
 ## [4.3.0](https://github.com/alexdlaird/amazon-orders/compare/4.2.2...4.3.0) - 2026-06-07
 

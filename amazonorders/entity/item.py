@@ -34,9 +34,10 @@ class Item(Parsable):
         #: The Item title.
         self.title: str = self.safe_simple_parse(selector=self.config.selectors.FIELD_ITEM_TITLE_SELECTOR,
                                                  required=True)
-        #: The Item link.
-        self.link: str = self.safe_simple_parse(selector=self.config.selectors.FIELD_ITEM_LINK_SELECTOR,
-                                                attr_name="href", required=True)
+        #: The Item link. ``None`` for items without an Amazon detail page (e.g. ASINLESS Whole Foods
+        #: Market line items).
+        self.link: Optional[str] = self.safe_simple_parse(selector=self.config.selectors.FIELD_ITEM_LINK_SELECTOR,
+                                                          attr_name="href")
         #: The Item price.
         self.price: Optional[float] = self.to_currency(
             self.safe_simple_parse(selector=self.config.selectors.FIELD_ITEM_PRICE_SELECTOR)

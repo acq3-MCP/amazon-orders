@@ -436,6 +436,39 @@ class TestOrders(UnitTestCase):
         self.assertEqual(1, croissants.quantity)
 
     @responses.activate
+    def test_get_order_history_full_details_wholefoods_payment(self):
+        # GIVEN
+        self.amazon_session.is_authenticated = True
+        year = 2024
+        with open(os.path.join(self.RESOURCES_DIR, "orders", "order-history-wholefoods-catering.html"), "r",
+                  encoding="utf-8") as f:
+            responses.add(
+                responses.GET,
+                self.test_config.constants.ORDER_HISTORY_URL,
+                body=f.read(),
+                status=200,
+            )
+        self.given_any_order_details_exists("order-details-114-9460922-7737063.html")
+        self.given_any_whole_foods_details_exists("order-details-fopo-113-4055495-4107437.html")
+
+        # WHEN
+        orders = self.amazon_orders.get_order_history(year=year, keep_paging=False, full_details=True)
+
+        # THEN
+        fopo_order = next(order for order in orders if order.order_number == "777-5719845-2377811")
+        # The receipt's first payment method maps onto the existing Order payment fields
+        self.assertEqual("Visa", fopo_order.payment_method)
+        self.assertEqual(9790, fopo_order.payment_method_last_4)
+        self.assertEqual(27.96, fopo_order.subtotal)
+        self.assertEqual(0.54, fopo_order.estimated_tax)
+        # An ASINLESS line item (no Amazon detail page) still parses, with a title but no link
+        self.assertEqual(3, len(fopo_order.items))
+        grapes = next(item for item in fopo_order.items if item.title == "Moon Drop Grapes")
+        self.assertIsNone(grapes.link)
+        self.assertIsNone(grapes.quantity)  # sold by weight (Qty: 2.44 lb)
+        self.assertIsNotNone(grapes.image_link)
+
+    @responses.activate
     def test_get_order_history_full_details_unsupported_type(self):
         # GIVEN
         self.amazon_session.is_authenticated = True

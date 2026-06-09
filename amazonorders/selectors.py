@@ -136,7 +136,10 @@ class Selectors:
     FIELD_ITEM_WHOLE_FOODS_QUANTITY_SELECTOR = ["span.a-size-small"]
     FIELD_ITEM_TITLE_SELECTOR = ["[data-component='itemTitle']",
                                  ".yohtmlc-item a", ".yohtmlc-product-title",
-                                 "div.a-column.a-span10 > a"]
+                                 "div.a-column.a-span10 > a",
+                                 # Whole Foods Market line items without an Amazon detail page (ASINLESS)
+                                 # render the title in a span rather than a link
+                                 "div.a-column.a-span10 > span"]
     FIELD_ITEM_LINK_SELECTOR = ["[data-component='itemTitle'] a",
                                 ".yohtmlc-item a",
                                 "a:has(> .yohtmlc-product-title)",
@@ -173,6 +176,9 @@ class Selectors:
     # The "Purchase Summary" amounts on the Whole Foods Market in-store (FOPO) order details page
     FIELD_ORDER_WHOLE_FOODS_SUBTOTAL_SELECTOR = "#wfm-subtotal-amount"
     FIELD_ORDER_WHOLE_FOODS_TAX_SELECTOR = "#wfm-tax-total-amount"
+    # The first "Payment Methods" entry on the Whole Foods Market in-store (FOPO) order details page
+    FIELD_ORDER_WHOLE_FOODS_PAYMENT_METHOD_SELECTOR = "#wfm-0-card-brand"
+    FIELD_ORDER_WHOLE_FOODS_PAYMENT_LAST_4_SELECTOR = "#wfm-0-card-tail"
     FIELD_ORDER_PLACED_DATE_SELECTOR = ["[data-component='orderDate']",
                                         "span.order-date-invoice-item",
                                         "[data-component='briefOrderInfo'] div.a-column",

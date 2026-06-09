@@ -90,12 +90,18 @@ class Order(Parsable):
 
         # Fields below this point are only populated if `full_details` is True
 
-        #: The Order payment method. Only populated when ``full_details`` is ``True``.
+        #: The Order payment method. Only populated when ``full_details`` is ``True``. For Whole Foods Market
+        #: orders this is the card brand of the first payment method on the receipt (e.g. "Visa").
         self.payment_method: Optional[str] = self._if_full_details(
+            self.safe_simple_parse(selector=self.config.selectors.FIELD_ORDER_WHOLE_FOODS_PAYMENT_METHOD_SELECTOR)
+            if self.is_whole_foods else
             self.safe_simple_parse(selector=self.config.selectors.FIELD_ORDER_PAYMENT_METHOD_SELECTOR,
                                    attr_name="alt"))
         #: The Order payment method's last 4 digits. Only populated when ``full_details`` is ``True``.
         self.payment_method_last_4: Optional[int] = self._if_full_details(
+            self.safe_simple_parse(selector=self.config.selectors.FIELD_ORDER_WHOLE_FOODS_PAYMENT_LAST_4_SELECTOR,
+                                   prefix_split="*")
+            if self.is_whole_foods else
             self.safe_simple_parse(selector=self.config.selectors.FIELD_ORDER_PAYMENT_METHOD_LAST_4_SELECTOR,
                                    prefix_split="ending in"))
         #: The Order subtotal. Only populated when ``full_details`` is ``True``.
