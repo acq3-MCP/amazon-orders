@@ -19,10 +19,11 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - `AmazonTransactions.get_transactions()` `order_id` parameter to scope results to a single Order server-side via Amazon's `transactionTag` filter, bypassing the `days` window.
 - `Order.is_whole_foods`, identifying Whole Foods Market purchases (in-store/FOPO purchases and Whole Foods receipt orders).
 - `Order.item_count`, the number of items in a purchase when Amazon summarizes the count instead of listing the items (e.g. Whole Foods Market orders).
+- Full-details support for Whole Foods Market in-store purchases: when `full_details=True`, these orders are fetched from their dedicated `/fopo/order-details` page (which the standard order-details endpoint does not serve) and populate `items` (title, price, image, link), `subtotal`, and `estimated_tax`.
 
 ### Changed
 
-- `Order.grand_total` is now populated for Whole Foods Market orders from the order history page (previously skipped as an unsupported order type). Per-item details for these orders still require the Whole Foods receipt page and are not yet parsed.
+- `Order.grand_total` is now populated for Whole Foods Market orders from the order history page (previously skipped as an unsupported order type).
 
 ## [4.3.0](https://github.com/alexdlaird/amazon-orders/compare/4.2.2...4.3.0) - 2026-06-07
 

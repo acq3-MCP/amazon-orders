@@ -99,7 +99,9 @@ class Order(Parsable):
             self.safe_simple_parse(selector=self.config.selectors.FIELD_ORDER_PAYMENT_METHOD_LAST_4_SELECTOR,
                                    prefix_split="ending in"))
         #: The Order subtotal. Only populated when ``full_details`` is ``True``.
-        self.subtotal: Optional[float] = self._if_full_details(self._parse_currency("subtotal"))
+        self.subtotal: Optional[float] = self._if_full_details(
+            self._parse_whole_foods_amount(self.config.selectors.FIELD_ORDER_WHOLE_FOODS_SUBTOTAL_SELECTOR)
+            if self.is_whole_foods else self._parse_currency("subtotal"))
         #: The Order shipping total. Only populated when ``full_details`` is ``True``.
         self.shipping_total: Optional[float] = self._if_full_details(self._parse_currency("shipping"))
         #: The Order free shipping. Only populated when ``full_details`` is ``True``.
@@ -120,8 +122,11 @@ class Order(Parsable):
             else subscription_discount
         #: The Order total before tax. Only populated when ``full_details`` is ``True``.
         self.total_before_tax: Optional[float] = self._if_full_details(self._parse_currency("before tax"))
-        #: The Order estimated tax. Only populated when ``full_details`` is ``True``.
-        self.estimated_tax: Optional[float] = self._if_full_details(self._parse_currency("estimated tax"))
+        #: The Order estimated tax. Only populated when ``full_details`` is ``True``. For Whole Foods Market
+        #: orders this is the "Tax and Fees" total from the receipt.
+        self.estimated_tax: Optional[float] = self._if_full_details(
+            self._parse_whole_foods_amount(self.config.selectors.FIELD_ORDER_WHOLE_FOODS_TAX_SELECTOR)
+            if self.is_whole_foods else self._parse_currency("estimated tax"))
         #: The Order refund total. Only populated when ``full_details`` is ``True``.
         self.refund_total: Optional[float] = self._if_full_details(self._parse_currency("refund total"))
         #: The Multibuy discount. Only populated when ``full_details`` is ``True``.
@@ -198,6 +203,10 @@ class Order(Parsable):
                 logger.warning(err_msg)
 
         return value
+
+    def _parse_whole_foods_amount(self,
+                                  selector: str) -> Optional[float]:
+        return self.to_currency(self.simple_parse(selector))
 
     def _parse_item_count(self) -> Optional[int]:
         for tag in util.select(self.parsed, self.config.selectors.FIELD_ORDER_ITEM_COUNT_SELECTOR):
