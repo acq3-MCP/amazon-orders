@@ -17,6 +17,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - `AmazonOrders.get_invoice()` to fetch an Order's print-friendly invoice page, returning the response (including its parsed HTML) for rendering or printing.
 - `AmazonTransactions.get_transactions()` `order_id` parameter to scope results to a single Order server-side via Amazon's `transactionTag` filter, bypassing the `days` window.
+- `Order.is_whole_foods`, identifying Whole Foods Market purchases (in-store/FOPO purchases and Whole Foods receipt orders).
+- `Order.item_count`, the number of items in a purchase when Amazon summarizes the count instead of listing the items (e.g. Whole Foods Market orders).
+
+### Changed
+
+- `Order.grand_total` is now populated for Whole Foods Market orders from the order history page (previously skipped as an unsupported order type). Per-item details for these orders still require the Whole Foods receipt page and are not yet parsed.
 
 ## [4.3.0](https://github.com/alexdlaird/amazon-orders/compare/4.2.2...4.3.0) - 2026-06-07
 

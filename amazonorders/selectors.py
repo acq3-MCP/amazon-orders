@@ -89,12 +89,23 @@ class Selectors:
     # Selectors defined here mean we don't have a reliable way to parse all details in an Order, so Items and
     # Shipments will be skipped
     ORDER_SKIP_ITEMS = [
-        # Identifies an Amazon Fresh order
+        # Identifies an Amazon Fresh order (also matched by Whole Foods in-store purchases, which
+        # render the same brand-logo box; those are distinguished via ORDER_WHOLE_FOODS below)
         ".brand-info-box .brand-logo img",
-        # Identifies a Whole Foods Market order
+        # Identifies a Whole Foods Market receipt order
         "a.yohtmlc-order-details-link[href^='/wholefoodsmarket']",
         # Identifies an order from a physical Amazon store
         Selector("div.yohtmlc-shipment-status-primaryText", "Purchased at Amazon")
+    ]
+    # Selectors that identify a Whole Foods Market purchase. In-store (FOPO) purchases link to
+    # ``/fopo/order-details`` and tag the shipment "Purchased at Whole Foods Market"; receipt orders
+    # link to the external ``/wholefoodsmarket/receipts/order`` page. Unlike the ORDER_SKIP_ITEMS
+    # entries, these orders expose a grand total (and often an item count) on the history page, so
+    # those fields are parsed even though per-item details require the Whole Foods receipt page.
+    ORDER_WHOLE_FOODS = [
+        "a[href*='/wholefoodsmarket/receipts/order/']",
+        "a[href*='/fopo/order-details']",
+        Selector("div.yohtmlc-shipment-status-primaryText", text_contains="Whole Foods Market")
     ]
     # Selectors defined here mean the Order will not have parsable totals
     ORDER_SKIP_TOTALS = [
@@ -154,6 +165,9 @@ class Selectors:
     FIELD_ORDER_ADDRESS_FALLBACK_1_SELECTOR = "div.recipient span.a-declarative"
     FIELD_ORDER_ADDRESS_FALLBACK_2_SELECTOR = "script[id^='shipToData']"
     FIELD_ORDER_GIFT_CARD_INSTANCE_SELECTOR = ".gift-card-instance"
+    # The candidate tags to scan for an "N items in this purchase" summary (e.g. Whole Foods Market
+    # orders); the count is extracted from the matching tag's text in ``Order._parse_item_count``.
+    FIELD_ORDER_ITEM_COUNT_SELECTOR = ["span"]
 
     #####################################
     # CSS selectors for Shipment fields

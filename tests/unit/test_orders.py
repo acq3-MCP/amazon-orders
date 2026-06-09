@@ -299,6 +299,7 @@ class TestOrders(UnitTestCase):
         self.assertEqual(1, resp.call_count)
         order = orders[9]
         self.assertEqual("113-9085096-9353021", order.order_number)
+        self.assertFalse(order.is_whole_foods)
         self.assertIsNone(order.grand_total)  # Amazon Store orders are unsupported order types
         self.assertIsNotNone(order.order_details_link)
         self.assertEqual(date(2025, 2, 28), order.order_placed_date)
@@ -351,6 +352,7 @@ class TestOrders(UnitTestCase):
         order = orders[4]
         self.assertEqual("111-2072777-8279433", order.order_number)
         self.assertEqual(4, order.index)
+        self.assertFalse(order.is_whole_foods)
         self.assertIsNone(order.grand_total)  # Amazon Fresh orders are unsupported order types
         self.assertIsNotNone(order.order_details_link)
         self.assertEqual(date(2025, 1, 3), order.order_placed_date)
@@ -378,10 +380,12 @@ class TestOrders(UnitTestCase):
         self.assertEqual(1, resp.call_count)
         order = orders[7]
         self.assertEqual("113-6307059-7336242", order.order_number)
-        self.assertIsNone(order.grand_total)  # Whole Foods orders are unsupported order types
+        self.assertTrue(order.is_whole_foods)
+        self.assertEqual(62.92, order.grand_total)  # Whole Foods totals are shown on the history page
+        self.assertEqual(10, order.item_count)
         self.assertIsNotNone(order.order_details_link)
         self.assertEqual(date(2024, 12, 12), order.order_placed_date)
-        self.assertEqual(0, len(order.items))
+        self.assertEqual(0, len(order.items))  # Per-item details require the Whole Foods receipt page
 
     @responses.activate
     def test_get_order_history_full_details_wholefood_skip(self):
@@ -405,6 +409,12 @@ class TestOrders(UnitTestCase):
         self.assertEqual(10, len(orders))
         self.assertEqual(1, resp1.call_count)
         self.assertEqual(6, resp2.call_count)
+        # Whole Foods orders are not fetched for full details, but their history-page total is still parsed
+        wfm_orders = [order for order in orders if order.is_whole_foods]
+        self.assertTrue(wfm_orders)
+        self.assertTrue(all(order.grand_total is not None for order in wfm_orders))
+        fopo_order = next(order for order in orders if order.order_number == "777-5719845-2377811")
+        self.assertEqual(125.67, fopo_order.grand_total)
 
     @responses.activate
     def test_get_order_history_full_details(self):

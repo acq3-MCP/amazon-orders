@@ -3,6 +3,7 @@ __license__ = "MIT"
 
 import json
 import logging
+import re
 from datetime import date
 from typing import Any, List, Optional, TypeVar, Union
 
@@ -52,6 +53,13 @@ class Order(Parsable):
         self.cancelled: bool = clone.cancelled if clone else bool(
             self.parsed and util.select(self.parsed, self.config.selectors.ORDER_SKIP_TOTALS))
 
+        #: ``True`` if this is a Whole Foods Market purchase (an in-store/FOPO purchase or a Whole Foods receipt
+        #: order). Unlike other unsupported order types, these expose a :attr:`grand_total` and (often) an
+        #: :attr:`item_count` on the history page, so those fields are populated; per-item details, however, are
+        #: only available on the Whole Foods receipt page and are not yet parsed, so :attr:`items` stays empty.
+        self.is_whole_foods: bool = clone.is_whole_foods if clone else bool(
+            self.parsed and util.select(self.parsed, self.config.selectors.ORDER_WHOLE_FOODS))
+
         #: The Order Shipments.
         self.shipments: List[Shipment] = clone.shipments if clone else self._parse_shipments()
         #: The Order Items.
@@ -76,6 +84,9 @@ class Order(Parsable):
             parse_date=True)
         #: The Order Recipients.
         self.recipient: Recipient = clone.recipient if clone else self.safe_parse(self._parse_recipient)
+        #: The number of items in the purchase, when Amazon summarizes the count instead of listing the items
+        #: (e.g. Whole Foods Market orders show "N items in this purchase"). ``None`` when no such summary is shown.
+        self.item_count: Optional[int] = clone.item_count if clone else self.safe_parse(self._parse_item_count)
 
         # Fields below this point are only populated if `full_details` is True
 
@@ -161,8 +172,9 @@ class Order(Parsable):
         if len(util.select(self.parsed, self.config.selectors.ORDER_SKIP_TOTALS)) > 0:
             return None
 
-        # Skip totals parsing for unsupported order types (Fresh, Whole Foods, physical stores)
-        if len(util.select(self.parsed, self.config.selectors.ORDER_SKIP_ITEMS)) > 0:
+        # Skip totals parsing for unsupported order types (Amazon Fresh, physical stores). Whole Foods Market
+        # orders also match ORDER_SKIP_ITEMS, but they expose a grand total on the history page, so parse it.
+        if not self.is_whole_foods and len(util.select(self.parsed, self.config.selectors.ORDER_SKIP_ITEMS)) > 0:
             return None
 
         value = self.simple_parse(self.config.selectors.FIELD_ORDER_GRAND_TOTAL_SELECTOR)
@@ -186,6 +198,14 @@ class Order(Parsable):
                 logger.warning(err_msg)
 
         return value
+
+    def _parse_item_count(self) -> Optional[int]:
+        for tag in util.select(self.parsed, self.config.selectors.FIELD_ORDER_ITEM_COUNT_SELECTOR):
+            match = re.search(r"(\d+)\s+items?\s+in this purchase", tag.text)
+            if match:
+                return int(match.group(1))
+
+        return None
 
     def _parse_recipient(self) -> Optional[Recipient]:
         # At least for now, we don't populate Recipient data for digital orders
