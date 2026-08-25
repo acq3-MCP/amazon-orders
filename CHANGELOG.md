@@ -4,32 +4,75 @@ All notable changes to this project will be documented in this file.
 
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased](https://github.com/alexdlaird/amazon-orders/compare/4.4.1...HEAD)
+## [Unreleased](https://github.com/alexdlaird/amazon-orders/compare/4.4.7...HEAD)
 
 ### Added
 
 - `AmazonGiftCards` with `get_balance()` and `get_gift_card_activity()` for read-only access to the Gift Card balance page (`/gc/balance`), and the `GiftCardActivity` entity (date, description, signed amount, closing balance, and Order references). Parsing is validated against sanitized captures of the live page.
 - `gift-card-balance` and `gift-card-activity` CLI commands.
 
+
+## [4.4.7](https://github.com/alexdlaird/amazon-orders/compare/4.4.6...4.4.7) - 2026-08-02
+
+### Fixed
+
+- `get_order()` now fetches Whole Foods Market orders via their dedicated details page instead of raising `AmazonOrdersNotFoundError` on redirect.
+
+## [4.4.6](https://github.com/alexdlaird/amazon-orders/compare/4.4.5...4.4.6) - 2026-07-20
+
+### Fixed
+
+- `PlaywrightManualWafForm` alongside `PlaywrightAcicForm` now opens a visible browser to solve ACIC-embedded challenges manually.
+
+## [4.4.5](https://github.com/alexdlaird/amazon-orders/compare/4.4.4...4.4.5) - 2026-07-15
+
+### Fixed
+
+- CLI `history` crash when using `--last-30-days` or `--last-3-months`.
+- CLI `history --start-index` now validates non-numeric input.
+
+## [4.4.4](https://github.com/alexdlaird/amazon-orders/compare/4.4.3...4.4.4) - 2026-07-07
+
+### Added
+
+- `Order.is_whole_foods`, identifying Whole Foods Market in-store and receipt orders.
+- `Order.item_count`, for orders where Amazon shows an item count rather than a line-item list (e.g. Whole Foods Market, eGift orders).
+- Full-details parsing for Whole Foods Market in-store (FOPO) orders via their dedicated `/fopo/order-details` page, populating `items`, `subtotal`, `estimated_tax`, and `payment_method`.
+- `Item.asin`, the product ASIN parsed from `Item.link` (`None` when the link is not a product page).
+
+### Changed
+
+- `Order.grand_total` now populated for Whole Foods Market orders (previously skipped as unsupported).
+- `Item.link` is now `Optional[str]` (`None` for items without an Amazon detail page).
+
+## [4.4.3](https://github.com/alexdlaird/amazon-orders/compare/4.4.2...4.4.3) - 2026-07-06
+
+## [4.4.2](https://github.com/alexdlaird/amazon-orders/compare/4.4.1...4.4.2) - 2026-07-05
+
+### Added
+
+- `request_timeout` config key (defaults to `None`) controlling the timeout passed to each HTTP request.
+- `Order.is_whole_foods`, identifying Whole Foods Market purchases (in-store/FOPO purchases and Whole Foods receipt orders).
+- `Order.item_count`, the number of items in a purchase when Amazon summarizes the count instead of listing the items (e.g. Whole Foods Market and eGift orders).
+- Full-details support for Whole Foods Market in-store purchases: when `full_details=True`, these orders are fetched from their dedicated `/fopo/order-details` page (which the standard order-details endpoint does not serve) and populate `items` (title, price, image, link, and whole-unit `quantity`), `subtotal`, `estimated_tax`, `payment_method`, and `payment_method_last_4`.
+
+### Changed
+
+- `Order.order_number` now uses the caller-supplied value as a fallback when the order number cannot be parsed from the details page; previously documented but unintuitive behavior.
+- `Order.grand_total` is now populated for Whole Foods Market orders from the order history page (previously skipped as an unsupported order type).
+- `Item.link` is now optional (`None` for line items without an Amazon detail page, such as ASINLESS Whole Foods Market items) rather than raising when no link is present.
+
 ## [4.4.1](https://github.com/alexdlaird/amazon-orders/compare/4.4.0...4.4.1) - 2026-07-04
 
 ### Fixed
 
-- Fixed parsing of some `Order` fields on older order pages using the `chargeSummary` layout.
+- Parsing of some `Order` fields on older order pages using the `chargeSummary` layout.
 
 ### Fixed
 
 - Fixed parsing of some `Order` fields on older order pages using the `chargeSummary` layout.
 
 ## [4.4.0](https://github.com/alexdlaird/amazon-orders/compare/4.3.1...4.4.0) - 2026-06-12
-
-### Added
-
-- `PlaywrightAcicForm` now solves visual grid Puzzles (e.g. "Choose all the buckets") automatically when a WAF solver extra is configured. Puzzles are detected and solved in a loop alongside the existing WAF token challenge, handling any combination Amazon presents.
-- `AwsWafForm._solve_visual_captcha()` subclass hook for Puzzle classification. `CapSolverWafForm` implements this via the `AwsWafClassification` task type.
-- `browser_timeout` config key (defaults to 30s) controlling how long the browser waits for challenge elements to appear.
-- `retry_failures` input on the integration test workflow for fail-fast CI runs.
-- Build and stability improvements.
 
 ### Added
 
@@ -45,26 +88,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - `AmazonOrders.get_invoice()` to fetch an Order's print-friendly invoice page, returning the response (including its parsed HTML) for rendering or printing.
 - `AmazonTransactions.get_transactions()` `order_id` parameter to scope results to a single Order server-side via Amazon's `transactionTag` filter, bypassing the `days` window.
 
-### Added
-
-- `AmazonOrders.get_invoice()` to fetch an Order's print-friendly invoice page, returning the response (including its parsed HTML) for rendering or printing.
-- `AmazonTransactions.get_transactions()` `order_id` parameter to scope results to a single Order server-side via Amazon's `transactionTag` filter, bypassing the `days` window.
-
 ## [4.3.0](https://github.com/alexdlaird/amazon-orders/compare/4.2.2...4.3.0) - 2026-06-07
-
-### Added
-
-- `[browser]` optional extra (`pip install amazon-orders[browser]`) for handling JavaScript-based authentication challenges via a headless browser. See [the docs](https://amazon-orders.readthedocs.io/browser.html) for setup.
-  - `PlaywrightAcicForm` handles the ACIC challenge page. If an embedded AWS WAF CAPTCHA is present, it delegates automatically to any configured WAF solver extra.
-  - `PlaywrightJSAuthForm` is a best-effort handler for the JS robot-detection page.
-  - `PlaywrightManualWafForm` opens a **visible** browser window for manual WAF CAPTCHA solving — a free alternative to the paid `[waf]` extras for local/interactive use.
-- `browser` config key and `AMAZON_BROWSER` environment variable to select between `chromium` (default) and `firefox` browser fingerprints.
-- `Transaction.payment_method_last_4`, the masked card digits parsed from `payment_method`, mirroring the existing field on `Order`.
-
-### Changed
-
-- JavaScript-based authentication challenge errors now direct users to the `[browser]` extra rather than reporting the challenge as unsolvable.
-- All user-facing error messages that include install commands now wrap those commands in backticks.
 
 ### Added
 
@@ -74,6 +98,11 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   - `PlaywrightManualWafForm` opens a **visible** browser window for you to solve the challenge yourself, suitable when a display is available.
 - `browser` config key and `AMAZON_BROWSER` environment variable to select between `chromium` (default) and `firefox` browser user agents.
 - `Transaction.payment_method_last_4`, the masked card digits parsed from `payment_method`, mirroring the existing field on `Order`.
+
+### Changed
+
+- JavaScript-based authentication challenge errors now direct users to the `[browser]` extra rather than reporting the challenge as unsolvable.
+- All user-facing error messages that include install commands now wrap those commands in backticks.
 
 ## [4.2.2](https://github.com/alexdlaird/amazon-orders/compare/4.2.1...4.2.2) - 2026-06-06
 
@@ -87,19 +116,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - WAF solver API keys can now also be set via `AmazonOrdersConfig` (under the lowercased env var name, e.g. `capsolver_api_key`), matching the precedence pattern used for other credentials.
 
-### Changed
-
-- WAF solver API keys can now also be set via `AmazonOrdersConfig` (under the lowercased env var name, e.g. `capsolver_api_key`), matching the precedence pattern used for other credentials.
-
 ## [4.2.0](https://github.com/alexdlaird/amazon-orders/compare/4.1.0...4.2.0) - 2026-05-08
-
-### Added
-
-- Support for AWS WAF solving via third-party providers like CapSolver (`pip install amazon-orders[capsolver]`), Anti-Captcha (`pip install amazon-orders[anticaptcha]`), and 2Captcha (`pip install amazon-orders[2captcha]`). See [the docs](https://amazon-orders.readthedocs.io/waf.html) for setup.
-- `auth_forms_classes` config option for plugging custom `AuthForm` subclasses into the auth chain without code changes.
-- `AmazonSession.default_auth_forms()` static helper that returns the default form chain so callers can more easily extend it.
-- Configurable Amazon domain for non-`.com` sites via the `domain` parameter on `AmazonSession`, the `domain` config field, and the `--domain` CLI flag.
-- Improved currency parsing for English non-`.com` Amazon sites.
 
 ### Added
 
@@ -123,23 +140,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - Captcha auto-solve via `amazoncaptcha` is likely to be removed in the future, since Amazon has continued to phase out OCR-style Captchas in favor of WAF.
 
-### Added
-
-- Python 3.13 support.
-
-### Changed
-
-- `amazoncaptcha` is now an optional dependency. Install with `pip install amazon-orders[captcha]` to enable Captcha auto-solve (only compatible with Python <=3.12. When not installed, Captcha challenges fall back to manual entry.
-
-### Deprecated
-
-- Captcha auto-solve via `amazoncaptcha` is likely to be removed in the future, since Amazon has continued to phase out OCR-style Captchas in favor of WAF.
-
 ## [4.0.19](https://github.com/alexdlaird/amazon-orders/compare/4.0.18...4.0.19) - 2026-04-29
-
-### Added
-
-- Build and stability improvements.
 
 ### Added
 
@@ -266,13 +267,6 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Documentation improvements.
 
 ## [4.0.2](https://github.com/alexdlaird/amazon-orders/compare/4.0.1...4.0.2) - 2025-04-25
-
-### Added
-
-- Improvements around auth retry logic.
-- Detect JavaScript-based auth challenges (which can be solved) and give more clear error for them.
-- Stability improvements.
-- Documentation improvements.
 
 ### Added
 

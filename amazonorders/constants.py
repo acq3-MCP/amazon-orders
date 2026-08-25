@@ -112,6 +112,8 @@ class Constants:
     ORDER_DETAILS_URL = f"{BASE_URL}/gp/your-account/order-details"
     ORDER_INVOICE_URL = f"{BASE_URL}/gp/css/summary/print.html"
     HISTORY_FILTER_QUERY_PARAM = "timeFilter"
+    ORDER_FILTER_QUERY_PARAM = "orderFilter"
+    WHOLE_FOODS_DETAILS_ROUTES = ["/fopo/order-details", "/wholefoodsmarket/receipts/order/"]
 
     ##########################################################################
     # URLs for Transactions

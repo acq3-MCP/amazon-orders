@@ -6,6 +6,7 @@ import concurrent.futures
 import datetime
 import logging
 from typing import Any, Callable, List, Optional
+from urllib.parse import quote
 
 from bs4 import Tag
 
@@ -62,7 +63,12 @@ class AmazonOrders:
             f"{self.config.constants.ORDER_DETAILS_URL}?orderID={order_id}")
         self.amazon_session.check_response(order_details_response, meta=meta)
 
-        if not order_details_response.response.url.startswith(self.config.constants.ORDER_DETAILS_URL):
+        response_url = order_details_response.response.url
+        if not response_url.startswith(self.config.constants.ORDER_DETAILS_URL):
+            if self._is_whole_foods_details_url(response_url):
+                # GET already followed the redirect, so order_details_response is the FOPO/receipt page.
+                return self._get_whole_foods_order(order_details_response, order_number=order_id, clone=clone)
+
             raise AmazonOrdersNotFoundError(f"Amazon redirected, which likely means Order {order_id} was not found.",
                                             meta=meta)
 
@@ -103,7 +109,8 @@ class AmazonOrders:
                           start_index: Optional[int] = None,
                           full_details: bool = False,
                           keep_paging: bool = True,
-                          time_filter: Optional[str] = None) -> List[Order]:
+                          time_filter: Optional[str] = None,
+                          order_filter: Optional[str] = None) -> List[Order]:
         """
         Get the Amazon Order history for a given time period.
 
@@ -119,6 +126,7 @@ class AmazonOrders:
         :param time_filter: The time filter to use. Supported values are ``"last30"`` (last 30 days),
             ``"months-3"`` (past 3 months), or ``"year-YYYY"`` (specific year). If provided, this takes
             precedence over the ``year`` parameter.
+        :param order_filter: The order type filter to use. If provided, appended alongside the time filter.
         :return: A list of the requested Orders.
         """
         if not self.amazon_session.is_authenticated:
@@ -144,12 +152,17 @@ class AmazonOrders:
             filter_value = f"year-{year}"
 
         optional_start_index = f"&startIndex={start_index}" if start_index else ""
+        optional_order_filter = (
+            f"&{self.config.constants.ORDER_FILTER_QUERY_PARAM}={quote(order_filter, safe='')}"
+            if order_filter else ""
+        )
         next_page: Optional[str] = (
-            "{url}?{query_param}={filter_value}{optional_start_index}"
+            "{url}?{query_param}={filter_value}{optional_order_filter}{optional_start_index}"
         ).format(
             url=self.config.constants.ORDER_HISTORY_URL,
             query_param=self.config.constants.HISTORY_FILTER_QUERY_PARAM,
             filter_value=filter_value,
+            optional_order_filter=optional_order_filter,
             optional_start_index=optional_start_index
         )
 
@@ -208,7 +221,17 @@ class AmazonOrders:
         order: Order = self.config.order_cls(order_tag, self.config, index=current_index)
 
         if full_details:
-            if len(util.select(order.parsed, self.config.selectors.ORDER_SKIP_ITEMS)) > 0:
+            if order.is_whole_foods:
+                link = order.order_details_link or ""
+                if self._is_whole_foods_details_url(link):
+                    details_response = self.amazon_session.get(link)
+                    self.amazon_session.check_response(details_response, meta={"index": order.index})
+                    order = self._get_whole_foods_order(details_response, order_number=order.order_number,
+                                                        clone=order)
+                else:
+                    logger.warning(f"Order {order.order_number} is a Whole Foods Market order whose details "
+                                   f"page could not be located, so it was left partially populated.")
+            elif len(util.select(order.parsed, self.config.selectors.ORDER_SKIP_ITEMS)) > 0:
                 logger.warning(f"Order {order.order_number} was partially populated, "
                                f"since it is an unsupported Order type.")
             elif not order.order_number:
@@ -218,6 +241,30 @@ class AmazonOrders:
                 order = self.get_order(order.order_number, clone=order)
 
         return order
+
+    def _is_whole_foods_details_url(self,
+                                    url: str) -> bool:
+        return any(route in url for route in self.config.constants.WHOLE_FOODS_DETAILS_ROUTES)
+
+    def _get_whole_foods_order(self,
+                               details_response: util.AmazonSessionResponse,
+                               order_number: Optional[str] = None,
+                               clone: Optional[Order] = None) -> Order:
+        """Builds an Order from an already-fetched Whole Foods Market details page response."""
+        details_tag = util.select_one(details_response.parsed,
+                                      self.config.selectors.ORDER_DETAILS_ENTITY_SELECTOR)
+
+        if not details_tag:
+            if clone:
+                logger.warning(f"Could not parse Whole Foods Market details for Order {clone.order_number}, "
+                               f"so it was left partially populated.")
+                return clone
+
+            raise AmazonOrdersError(f"Could not parse Whole Foods Market details for Order {order_number}. "
+                                    f"Check if Amazon changed the HTML.")
+
+        return self.config.order_cls(details_tag, self.config, full_details=True, clone=clone,
+                                     order_number=order_number)
 
     async def _async_wrapper(self,
                              func: Callable,
