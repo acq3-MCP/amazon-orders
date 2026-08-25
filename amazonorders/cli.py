@@ -503,6 +503,8 @@ def _gift_card_activity_output(a: GiftCardActivity,
         activity_str += f"\n  Description: {a.description}"
     if a.amount is not None:
         activity_str += f"\n  Amount: {config.constants.format_currency(a.amount)}"
+    if a.closing_balance is not None:
+        activity_str += f"\n  Closing Balance: {config.constants.format_currency(a.closing_balance)}"
     if a.order_number:
         activity_str += f"\n  Order #{a.order_number}"
         activity_str += f"\n  Order Details Link: {a.order_details_link}"

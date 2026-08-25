@@ -225,30 +225,21 @@ class Selectors:
     #####################################
     # CSS selectors for GiftCardActivity fields
     #
-    # PROVISIONAL: modeled on the payments-portal (`pmts`/`apx`) widget markup
-    # the Transaction history page uses; must be validated against captured
-    # /gc/balance fixtures before release.
+    # The /gc/balance page renders activity as a plain bordered table
+    # (Date | Description | Amount | Closing balance) with link-based
+    # pagination, not the payments-portal widget the Transaction history
+    # page uses.
     #####################################
 
-    GIFT_CARD_BALANCE_SELECTOR = ["#gc-current-balance",
-                                  ".gc-balance-value"]
+    GIFT_CARD_BALANCE_SELECTOR = "#gc-ui-balance-gc-balance-value"
 
-    GIFT_CARD_ACTIVITY_FORM_SELECTOR = "form:has(input[name='ppw-widgetState'])"
-    GIFT_CARD_ACTIVITY_DATE_CONTAINERS_SELECTOR = "div.apx-transaction-date-container"
-    GIFT_CARD_ACTIVITY_CONTAINER_SELECTOR = "div"
-    GIFT_CARD_ACTIVITY_SELECTOR = "div.apx-transactions-line-item-component-container:has(*)"
+    GIFT_CARD_ACTIVITY_TABLE_SELECTOR = "div#gc-balance-table table.a-bordered"
+    GIFT_CARD_ACTIVITY_SELECTOR = "tr:has(> td)"
+    GIFT_CARD_ACTIVITY_NEXT_PAGE_LINK_SELECTOR = "div#gc-balance-table ul.a-pagination li.a-last a"
 
-    GIFT_CARD_ACTIVITY_NEXT_PAGE_INPUT_SELECTOR = [
-        "input[type='submit'][name^='ppw-widgetEvent:DefaultNextPageNavigationEvent']"]
-    GIFT_CARD_ACTIVITY_NEXT_PAGE_INPUT_STATE_SELECTOR = "input[name='ppw-widgetState']"
-    GIFT_CARD_ACTIVITY_NEXT_PAGE_INPUT_IE_SELECTOR = "input[name='ie']"
-
-    FIELD_GIFT_CARD_ACTIVITY_DATE_SELECTOR = "span"
-    FIELD_GIFT_CARD_ACTIVITY_DESCRIPTION_SELECTOR = [
-        "div.apx-transactions-line-item-component-container > div:nth-child(1) span.a-size-base"]
-    FIELD_GIFT_CARD_ACTIVITY_AMOUNT_SELECTOR = [
-        "div.apx-transactions-line-item-component-container > div:nth-child(1) span.a-size-base-plus"]
-    FIELD_GIFT_CARD_ACTIVITY_ORDER_NUMBER_SELECTOR = [
-        "div.apx-transactions-line-item-component-container div .a-span12"]
-    FIELD_GIFT_CARD_ACTIVITY_ORDER_LINK_SELECTOR = [
-        "div.apx-transactions-line-item-component-container a.a-link-normal"]
+    FIELD_GIFT_CARD_ACTIVITY_DATE_SELECTOR = "td:nth-of-type(1)"
+    FIELD_GIFT_CARD_ACTIVITY_DESCRIPTION_SELECTOR = "td:nth-of-type(2) span"
+    FIELD_GIFT_CARD_ACTIVITY_AMOUNT_SELECTOR = "td:nth-of-type(3)"
+    FIELD_GIFT_CARD_ACTIVITY_CLOSING_BALANCE_SELECTOR = "td:nth-of-type(4)"
+    FIELD_GIFT_CARD_ACTIVITY_ORDER_NUMBER_SELECTOR = "td:nth-of-type(2) a.a-link-normal span"
+    FIELD_GIFT_CARD_ACTIVITY_ORDER_LINK_SELECTOR = "td:nth-of-type(2) a.a-link-normal"

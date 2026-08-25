@@ -19,29 +19,33 @@ ORDER_NUMBER_REGEX = re.compile(r"(\d{3}-\d{7}-\d{7})")
 
 class GiftCardActivity(Parsable):
     """
-    An entry in the Amazon Gift Card activity ledger (for instance, a claim code redemption,
-    an amount applied to an Order, or a refund credited back to the balance).
+    An entry in the Amazon Gift Card activity ledger (for instance, an amount applied to an
+    Order, a Reload, or a refund credited back to the balance).
     """
 
     def __init__(self,
                  parsed: Tag,
-                 config: AmazonOrdersConfig,
-                 activity_date: date) -> None:
+                 config: AmazonOrdersConfig) -> None:
         super().__init__(parsed, config)
 
         #: The GiftCardActivity date.
-        self.activity_date: date = activity_date
+        self.activity_date: Optional[date] = self.safe_simple_parse(
+            selector=self.config.selectors.FIELD_GIFT_CARD_ACTIVITY_DATE_SELECTOR,
+            parse_date=True
+        )
         #: The GiftCardActivity description.
         self.description: Optional[str] = self.safe_simple_parse(
             selector=self.config.selectors.FIELD_GIFT_CARD_ACTIVITY_DESCRIPTION_SELECTOR
         )
         #: The GiftCardActivity amount. Negative when the balance was debited (e.g. applied to
-        #: an Order), positive when it was credited (e.g. a redemption or refund).
+        #: an Order), positive when it was credited (e.g. a Reload or refund).
         self.amount: float = self.safe_parse(self._parse_amount)
         #: The GiftCardActivity credited the balance or not.
-        self.is_credit: bool = self.amount > 0
+        self.is_credit: bool = bool(self.amount and self.amount > 0)
+        #: The Gift Card balance after this activity was applied.
+        self.closing_balance: Optional[float] = self.safe_parse(self._parse_closing_balance)
         #: The Order number the GiftCardActivity references. ``None`` if the activity is not
-        #: associated with an Order (e.g. a claim code redemption).
+        #: associated with an Order.
         self.order_number: Optional[str] = self.safe_parse(self._parse_order_number)
         #: The Order details link. ``None`` if the activity is not associated with an Order.
         self.order_details_link: Optional[str] = self.safe_parse(self._parse_order_details_link)
@@ -67,6 +71,11 @@ class GiftCardActivity(Parsable):
 
         return value
 
+    def _parse_closing_balance(self) -> Union[float, int, None]:
+        value = self.simple_parse(self.config.selectors.FIELD_GIFT_CARD_ACTIVITY_CLOSING_BALANCE_SELECTOR)
+
+        return self.to_currency(value)
+
     def _parse_order_number(self) -> Optional[str]:
         value = self.simple_parse(self.config.selectors.FIELD_GIFT_CARD_ACTIVITY_ORDER_NUMBER_SELECTOR)
 
@@ -81,10 +90,13 @@ class GiftCardActivity(Parsable):
         return match.group(1) if match else None
 
     def _parse_order_details_link(self) -> Optional[str]:
+        if not self.order_number:
+            return None
+
         value = self.simple_parse(self.config.selectors.FIELD_GIFT_CARD_ACTIVITY_ORDER_LINK_SELECTOR,
                                   attr_name="href")
 
-        if not value and self.order_number:
+        if not value:
             value = f"{self.config.constants.ORDER_DETAILS_URL}?orderID={self.order_number}"
 
         return value

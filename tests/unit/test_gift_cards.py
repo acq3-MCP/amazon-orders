@@ -9,55 +9,9 @@ import responses
 from bs4 import BeautifulSoup
 
 from amazonorders.exception import AmazonOrdersError, AmazonOrdersAuthRedirectError
-from amazonorders.gift_cards import AmazonGiftCards, _parse_gift_card_activity_form_tag
+from amazonorders.gift_cards import AmazonGiftCards, _parse_gift_card_activity_page
 from amazonorders.session import AmazonSession
 from tests.unittestcase import UnitTestCase
-
-# Synthetic markup matching the provisional Gift Card selectors. Replace with sanitized
-# /gc/balance captures (and update the selectors) once fixtures are available.
-GIFT_CARD_BALANCE_SNIPPET = """
-<div id="gc-current-balance">$42.17</div>
-"""
-
-GIFT_CARD_ACTIVITY_FORM_SNIPPET = """
-<form>
-    <input name="ppw-widgetState" value="the-ppw-widgetState"/>
-    <input name="ie" value="UTF-8"/>
-    <div class="apx-transaction-date-container">
-        <span>October 11, 2024</span>
-    </div>
-    <div>
-        <div class="apx-transactions-line-item-component-container">
-            <div class="a-row">
-                <span class="a-size-base">Used to pay for an Amazon order</span>
-                <span class="a-size-base-plus">-$12.50</span>
-            </div>
-            <div class="a-row">
-                <a class="a-link-normal" href="/gp/your-account/order-details?orderID=111-2266921-0923465">
-                    <span class="a-span12">Order #111-2266921-0923465</span>
-                </a>
-            </div>
-        </div>
-    </div>
-    <div class="apx-transaction-date-container">
-        <span>October 1, 2024</span>
-    </div>
-    <div>
-        <div class="apx-transactions-line-item-component-container">
-            <div class="a-row">
-                <span class="a-size-base">Gift card redeemed</span>
-                <span class="a-size-base-plus">$25.00</span>
-            </div>
-        </div>
-    </div>
-</form>
-"""
-
-GIFT_CARD_ACTIVITY_FORM_WITH_NEXT_PAGE_SNIPPET = GIFT_CARD_ACTIVITY_FORM_SNIPPET.replace(
-    "</form>",
-    """<input type="submit"
-              name='ppw-widgetEvent:DefaultNextPageNavigationEvent:{"nextPageKey":"key"}'/>
-</form>""")
 
 
 class TestGiftCards(UnitTestCase):
@@ -69,6 +23,16 @@ class TestGiftCards(UnitTestCase):
                                             config=self.test_config)
 
         self.amazon_gift_cards = AmazonGiftCards(self.amazon_session)
+
+    def _given_gift_card_page_exists(self, html_file):
+        with open(os.path.join(self.RESOURCES_DIR, "giftcards", html_file), "r",
+                  encoding="utf-8") as f:
+            return responses.add(
+                responses.GET,
+                f"{self.test_config.constants.GIFT_CARD_BALANCE_URL}",
+                body=f.read(),
+                status=200,
+            )
 
     def test_get_balance_unauthenticated(self):
         # WHEN
@@ -104,18 +68,13 @@ class TestGiftCards(UnitTestCase):
     def test_get_balance(self):
         # GIVEN
         self.amazon_session.is_authenticated = True
-        resp = responses.add(
-            responses.GET,
-            f"{self.test_config.constants.GIFT_CARD_BALANCE_URL}",
-            body=GIFT_CARD_BALANCE_SNIPPET,
-            status=200,
-        )
+        resp = self._given_gift_card_page_exists("gift-card-balance-activity.html")
 
         # WHEN
         balance = self.amazon_gift_cards.get_balance()
 
         # THEN
-        self.assertEqual(42.17, balance)
+        self.assertEqual(0.00, balance)
         self.assertEqual(1, resp.call_count)
 
     @responses.activate
@@ -142,56 +101,84 @@ class TestGiftCards(UnitTestCase):
     @patch("amazonorders.gift_cards.datetime", wraps=datetime)
     def test_get_gift_card_activity(self, mock_today):
         # GIVEN
-        mock_today.date.today.return_value = datetime.date(2024, 10, 11)
+        mock_today.date.today.return_value = datetime.date(2026, 5, 15)
         self.amazon_session.is_authenticated = True
-        resp = responses.add(
-            responses.GET,
-            f"{self.test_config.constants.GIFT_CARD_BALANCE_URL}",
-            body=GIFT_CARD_ACTIVITY_FORM_SNIPPET,
-            status=200,
-        )
+        resp = self._given_gift_card_page_exists("gift-card-balance-activity.html")
 
         # WHEN
-        activity = self.amazon_gift_cards.get_gift_card_activity(days=30, keep_paging=False)
+        activity = self.amazon_gift_cards.get_gift_card_activity(keep_paging=False)
 
         # THEN
-        self.assertEqual(2, len(activity))
+        self.assertEqual(15, len(activity))
         entry = activity[0]
-        self.assertEqual(entry.activity_date, datetime.date(2024, 10, 11))
-        self.assertEqual(entry.description, "Used to pay for an Amazon order")
-        self.assertEqual(entry.amount, -12.50)
+        self.assertEqual(entry.activity_date, datetime.date(2026, 5, 12))
+        self.assertEqual(entry.description, "Gift Card applied to Amazon.com order")
+        self.assertEqual(entry.amount, -19.48)
         self.assertFalse(entry.is_credit)
-        self.assertEqual(entry.order_number, "111-2266921-0923465")
+        self.assertEqual(entry.closing_balance, 0.00)
+        self.assertEqual(entry.order_number, "111-5500901-2478601")
         self.assertEqual(entry.order_details_link,
-                         "https://www.amazon.com/gp/your-account/order-details?orderID=111-2266921-0923465")
+                         "https://www.amazon.com/gp/your-account/order-details/ref=gcf_b_bp_lpo_c_d_b_x"
+                         "?ie=UTF8&orderID=111-5500901-2478601")
         entry = activity[1]
-        self.assertEqual(entry.activity_date, datetime.date(2024, 10, 1))
-        self.assertEqual(entry.description, "Gift card redeemed")
-        self.assertEqual(entry.amount, 25.00)
+        self.assertEqual(entry.activity_date, datetime.date(2026, 5, 11))
+        self.assertEqual(entry.description, "Gift Card Balance added from Reload")
+        self.assertEqual(entry.amount, 19.48)
         self.assertTrue(entry.is_credit)
-        self.assertIsNone(entry.order_number)
-        self.assertIsNone(entry.order_details_link)
+        self.assertEqual(entry.closing_balance, 19.48)
+        self.assertEqual(entry.order_number, "111-5500902-2478602")
+        entry = activity[3]
+        self.assertEqual(entry.description, "Refund from Amazon.com order")
+        self.assertEqual(entry.amount, 14.55)
+        self.assertTrue(entry.is_credit)
         self.assertEqual(1, resp.call_count)
+
+    @responses.activate
+    @patch("amazonorders.gift_cards.datetime", wraps=datetime)
+    def test_get_gift_card_activity_paginated(self, mock_today):
+        # GIVEN
+        mock_today.date.today.return_value = datetime.date(2026, 5, 15)
+        self.amazon_session.is_authenticated = True
+        resp1 = self._given_gift_card_page_exists("gift-card-balance-activity.html")
+        resp2 = self._given_gift_card_page_exists("gift-card-balance-activity-last-page.html")
+
+        # WHEN
+        activity = self.amazon_gift_cards.get_gift_card_activity()
+
+        # THEN
+        self.assertEqual(30, len(activity))
+        self.assertEqual(1, resp1.call_count)
+        self.assertEqual(1, resp2.call_count)
+        self.assertIn("next=", resp2.calls[0].request.url)
 
     @responses.activate
     @patch("amazonorders.gift_cards.datetime", wraps=datetime)
     def test_get_gift_card_activity_days_filter(self, mock_today):
         # GIVEN
-        mock_today.date.today.return_value = datetime.date(2024, 10, 11)
+        mock_today.date.today.return_value = datetime.date(2026, 5, 12)
         self.amazon_session.is_authenticated = True
-        resp = responses.add(
-            responses.GET,
-            f"{self.test_config.constants.GIFT_CARD_BALANCE_URL}",
-            body=GIFT_CARD_ACTIVITY_FORM_WITH_NEXT_PAGE_SNIPPET,
-            status=200,
-        )
+        resp = self._given_gift_card_page_exists("gift-card-balance-activity.html")
 
         # WHEN
         activity = self.amazon_gift_cards.get_gift_card_activity(days=5)
 
         # THEN entries older than the window stop paging, even with a next page present
-        self.assertEqual(1, len(activity))
-        self.assertEqual(activity[0].activity_date, datetime.date(2024, 10, 11))
+        self.assertEqual(2, len(activity))
+        self.assertEqual(activity[0].activity_date, datetime.date(2026, 5, 12))
+        self.assertEqual(activity[1].activity_date, datetime.date(2026, 5, 11))
+        self.assertEqual(1, resp.call_count)
+
+    @responses.activate
+    def test_get_gift_card_activity_zero_activity(self):
+        # GIVEN
+        self.amazon_session.is_authenticated = True
+        resp = self._given_gift_card_page_exists("gift-card-balance-zero-activity.html")
+
+        # WHEN
+        activity = self.amazon_gift_cards.get_gift_card_activity(keep_paging=False)
+
+        # THEN
+        self.assertEqual(0, len(activity))
         self.assertEqual(1, resp.call_count)
 
     @responses.activate
@@ -219,37 +206,50 @@ class TestGiftCards(UnitTestCase):
         # GIVEN
         self.amazon_session.is_authenticated = True
         resp = responses.add(
-            responses.POST,
+            responses.GET,
             f"{self.test_config.constants.GIFT_CARD_BALANCE_URL}",
             status=503,
         )
-        next_page_data = {"some": "meta"}
 
         # WHEN
         with self.assertRaises(AmazonOrdersError) as cm:
-            self.amazon_gift_cards.get_gift_card_activity(next_page_data=next_page_data, keep_paging=False)
+            self.amazon_gift_cards.get_gift_card_activity(keep_paging=False)
 
         # THEN
         self.assertEqual(1, resp.call_count)
-        self.assertEqual(cm.exception.meta, next_page_data)
+        self.assertEqual(cm.exception.meta,
+                         {"next_page_url": self.test_config.constants.GIFT_CARD_BALANCE_URL})
 
-    def test_parse_gift_card_activity_form_tag(self):
+    def test_parse_gift_card_activity_page(self):
         # GIVEN
-        parsed = BeautifulSoup(GIFT_CARD_ACTIVITY_FORM_WITH_NEXT_PAGE_SNIPPET, self.test_config.bs4_parser)
-        form_tag = parsed.select_one("form")
+        with open(os.path.join(self.RESOURCES_DIR, "giftcards", "gift-card-balance-activity.html"), "r",
+                  encoding="utf-8") as f:
+            parsed = BeautifulSoup(f.read(), self.test_config.bs4_parser)
 
         # WHEN
-        activity, next_page_data = _parse_gift_card_activity_form_tag(
-            form_tag, self.test_config
+        found_table, activity, next_page_url = _parse_gift_card_activity_page(
+            parsed, self.test_config
         )
 
         # THEN
-        self.assertEqual(len(activity), 2)
-        self.assertEqual(
-            next_page_data,
-            {
-                "ppw-widgetState": "the-ppw-widgetState",
-                "ie": "UTF-8",
-                'ppw-widgetEvent:DefaultNextPageNavigationEvent:{"nextPageKey":"key"}': "",
-            },
+        self.assertTrue(found_table)
+        self.assertEqual(len(activity), 15)
+        self.assertTrue(next_page_url.startswith(
+            f"{self.test_config.constants.BASE_URL}/gc/balance?ref_="))
+        self.assertIn("next=", next_page_url)
+
+    def test_parse_gift_card_activity_page_last_page(self):
+        # GIVEN
+        with open(os.path.join(self.RESOURCES_DIR, "giftcards", "gift-card-balance-activity-last-page.html"), "r",
+                  encoding="utf-8") as f:
+            parsed = BeautifulSoup(f.read(), self.test_config.bs4_parser)
+
+        # WHEN
+        found_table, activity, next_page_url = _parse_gift_card_activity_page(
+            parsed, self.test_config
         )
+
+        # THEN
+        self.assertTrue(found_table)
+        self.assertEqual(len(activity), 15)
+        self.assertIsNone(next_page_url)
