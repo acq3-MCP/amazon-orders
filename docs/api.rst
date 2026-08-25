@@ -17,6 +17,11 @@ Main Interface
     :private-members:
     :show-inheritance:
 
+.. automodule:: amazonorders.gift_cards
+    :members:
+    :private-members:
+    :show-inheritance:
+
 Session Management
 ------------------
 
@@ -51,6 +56,11 @@ Entities
 --------
 
 .. automodule:: amazonorders.entity.parsable
+    :members:
+    :private-members:
+    :show-inheritance:
+
+.. automodule:: amazonorders.entity.gift_card_activity
     :members:
     :private-members:
     :show-inheritance:

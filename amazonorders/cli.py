@@ -17,7 +17,9 @@ from amazonorders import __version__, util
 from amazonorders.conf import AmazonOrdersConfig
 from amazonorders.entity.order import Order
 from amazonorders.entity.transaction import Transaction
+from amazonorders.entity.gift_card_activity import GiftCardActivity
 from amazonorders.exception import AmazonOrdersError, AmazonOrdersAuthError, AmazonOrdersAuthRedirectError
+from amazonorders.gift_cards import AmazonGiftCards
 from amazonorders.orders import AmazonOrders
 from amazonorders.session import AmazonSession, IODefault
 from amazonorders.transactions import AmazonTransactions
@@ -265,6 +267,75 @@ Transaction History for {days} days
         ctx.fail(str(e))
 
 
+@amazon_orders_cli.command()
+@click.pass_context
+def gift_card_balance(ctx: Context) -> None:
+    """
+    Get the current Amazon Gift Card balance.
+    """
+    amazon_session = ctx.obj["amazon_session"]
+
+    try:
+        _authenticate(amazon_session)
+
+        config = ctx.obj["conf"]
+        amazon_gift_cards = AmazonGiftCards(amazon_session,
+                                            config=config)
+
+        balance = amazon_gift_cards.get_balance()
+
+        click.echo(f"Gift Card Balance: {config.constants.format_currency(balance)}\n")
+    except AmazonOrdersAuthRedirectError:
+        _prompt_to_reauth_flow()
+    except AmazonOrdersError as e:
+        logger.debug("An error occurred.", exc_info=True)
+        ctx.fail(str(e))
+
+
+@amazon_orders_cli.command()
+@click.pass_context
+@click.option("--days", default=365,
+              help="The number of days of Gift Card activity to get.")
+def gift_card_activity(ctx: Context, **kwargs: Any):
+    """
+    Get Amazon Gift Card activity for a given number of days.
+    """
+    amazon_session = ctx.obj["amazon_session"]
+
+    try:
+        _authenticate(amazon_session)
+
+        days = kwargs["days"]
+
+        click.echo(
+            """-----------------------------------------------------------------------
+Gift Card Activity for {days} days
+-----------------------------------------------------------------------\n""".format(days=days)
+        )
+        click.echo("Info: Fetching Gift Card activity, this might take a minute ...")
+
+        config = ctx.obj["conf"]
+        amazon_gift_cards = AmazonGiftCards(amazon_session,
+                                            config=config)
+
+        start_time = time.time()
+        total = 0
+        for a in amazon_gift_cards.get_gift_card_activity(days=days):
+            click.echo(f"{_gift_card_activity_output(a, config)}\n")
+            total += 1
+        end_time = time.time()
+
+        click.echo(
+            "... {total} Gift Card activity entries parsed in {time} seconds.\n".format(
+                total=total,
+                time=int(end_time - start_time)))
+    except AmazonOrdersAuthRedirectError:
+        _prompt_to_reauth_flow()
+    except AmazonOrdersError as e:
+        logger.debug("An error occurred.", exc_info=True)
+        ctx.fail(str(e))
+
+
 @amazon_orders_cli.command(short_help="Check if a persisted session exists.")
 @click.pass_context
 def check_session(ctx: Context) -> None:
@@ -423,6 +494,22 @@ def _transaction_output(t: Transaction,
     transaction_str += f"\n  Order Details Link: {t.order_details_link}"
 
     return transaction_str
+
+
+def _gift_card_activity_output(a: GiftCardActivity,
+                               config: AmazonOrdersConfig) -> str:
+    activity_str = f"Gift Card Activity: {a.activity_date}"
+    if a.description:
+        activity_str += f"\n  Description: {a.description}"
+    if a.amount is not None:
+        activity_str += f"\n  Amount: {config.constants.format_currency(a.amount)}"
+    if a.closing_balance is not None:
+        activity_str += f"\n  Closing Balance: {config.constants.format_currency(a.closing_balance)}"
+    if a.order_number:
+        activity_str += f"\n  Order #{a.order_number}"
+        activity_str += f"\n  Order Details Link: {a.order_details_link}"
+
+    return activity_str
 
 
 if __name__ == "__main__":
