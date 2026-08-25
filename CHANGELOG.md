@@ -6,6 +6,11 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased](https://github.com/alexdlaird/amazon-orders/compare/4.4.1...HEAD)
 
+### Added
+
+- `AmazonGiftCards` with `get_balance()` and `get_gift_card_activity()` for read-only access to the Gift Card balance page (`/gc/balance`), and the `GiftCardActivity` entity. Selectors are provisional pending captured fixtures.
+- `gift-card-balance` and `gift-card-activity` CLI commands.
+
 ## [4.4.1](https://github.com/alexdlaird/amazon-orders/compare/4.4.0...4.4.1) - 2026-07-04
 
 ### Fixed

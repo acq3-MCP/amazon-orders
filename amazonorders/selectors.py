@@ -221,3 +221,34 @@ class Selectors:
         "div.apx-transactions-line-item-component-container a.a-link-normal"]
     FIELD_TRANSACTION_SELLER_NAME_SELECTOR = [
         "div.apx-transactions-line-item-component-container :has(a.a-link-normal) + div"]
+
+    #####################################
+    # CSS selectors for GiftCardActivity fields
+    #
+    # PROVISIONAL: modeled on the payments-portal (`pmts`/`apx`) widget markup
+    # the Transaction history page uses; must be validated against captured
+    # /gc/balance fixtures before release.
+    #####################################
+
+    GIFT_CARD_BALANCE_SELECTOR = ["#gc-current-balance",
+                                  ".gc-balance-value"]
+
+    GIFT_CARD_ACTIVITY_FORM_SELECTOR = "form:has(input[name='ppw-widgetState'])"
+    GIFT_CARD_ACTIVITY_DATE_CONTAINERS_SELECTOR = "div.apx-transaction-date-container"
+    GIFT_CARD_ACTIVITY_CONTAINER_SELECTOR = "div"
+    GIFT_CARD_ACTIVITY_SELECTOR = "div.apx-transactions-line-item-component-container:has(*)"
+
+    GIFT_CARD_ACTIVITY_NEXT_PAGE_INPUT_SELECTOR = [
+        "input[type='submit'][name^='ppw-widgetEvent:DefaultNextPageNavigationEvent']"]
+    GIFT_CARD_ACTIVITY_NEXT_PAGE_INPUT_STATE_SELECTOR = "input[name='ppw-widgetState']"
+    GIFT_CARD_ACTIVITY_NEXT_PAGE_INPUT_IE_SELECTOR = "input[name='ie']"
+
+    FIELD_GIFT_CARD_ACTIVITY_DATE_SELECTOR = "span"
+    FIELD_GIFT_CARD_ACTIVITY_DESCRIPTION_SELECTOR = [
+        "div.apx-transactions-line-item-component-container > div:nth-child(1) span.a-size-base"]
+    FIELD_GIFT_CARD_ACTIVITY_AMOUNT_SELECTOR = [
+        "div.apx-transactions-line-item-component-container > div:nth-child(1) span.a-size-base-plus"]
+    FIELD_GIFT_CARD_ACTIVITY_ORDER_NUMBER_SELECTOR = [
+        "div.apx-transactions-line-item-component-container div .a-span12"]
+    FIELD_GIFT_CARD_ACTIVITY_ORDER_LINK_SELECTOR = [
+        "div.apx-transactions-line-item-component-container a.a-link-normal"]
