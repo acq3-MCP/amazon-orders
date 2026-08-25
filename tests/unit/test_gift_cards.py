@@ -140,16 +140,48 @@ class TestGiftCards(UnitTestCase):
         mock_today.date.today.return_value = datetime.date(2026, 5, 15)
         self.amazon_session.is_authenticated = True
         resp1 = self._given_gift_card_page_exists("gift-card-balance-activity.html")
-        resp2 = self._given_gift_card_page_exists("gift-card-balance-activity-last-page.html")
+        resp2 = self._given_gift_card_page_exists("gift-card-balance-activity-page-2.html")
+        resp3 = self._given_gift_card_page_exists("gift-card-balance-activity-last-page.html")
 
         # WHEN
-        activity = self.amazon_gift_cards.get_gift_card_activity()
+        activity = self.amazon_gift_cards.get_gift_card_activity(days=4000)
 
         # THEN
-        self.assertEqual(30, len(activity))
+        self.assertEqual(41, len(activity))
         self.assertEqual(1, resp1.call_count)
         self.assertEqual(1, resp2.call_count)
+        self.assertEqual(1, resp3.call_count)
         self.assertIn("next=", resp2.calls[0].request.url)
+        self.assertIn("next=", resp3.calls[0].request.url)
+
+    @responses.activate
+    @patch("amazonorders.gift_cards.datetime", wraps=datetime)
+    def test_get_gift_card_activity_redemption_and_linkless_rows(self, mock_today):
+        # GIVEN
+        mock_today.date.today.return_value = datetime.date(2026, 5, 15)
+        self.amazon_session.is_authenticated = True
+        resp = self._given_gift_card_page_exists("gift-card-balance-activity-page-2.html")
+
+        # WHEN
+        activity = self.amazon_gift_cards.get_gift_card_activity(days=600, keep_paging=False)
+
+        # THEN a claim code redemption row has no Order reference
+        self.assertEqual(15, len(activity))
+        entry = activity[0]
+        self.assertEqual(entry.activity_date, datetime.date(2025, 7, 14))
+        self.assertEqual(entry.description, "Gift Card added")
+        self.assertEqual(entry.amount, 13.70)
+        self.assertTrue(entry.is_credit)
+        self.assertEqual(entry.closing_balance, 212.53)
+        self.assertIsNone(entry.order_number)
+        self.assertIsNone(entry.order_details_link)
+        # THEN a refund row rendered without an Order link also has no Order reference
+        entry = activity[8]
+        self.assertEqual(entry.description, "Refund from Amazon.com order")
+        self.assertTrue(entry.is_credit)
+        self.assertIsNone(entry.order_number)
+        self.assertIsNone(entry.order_details_link)
+        self.assertEqual(1, resp.call_count)
 
     @responses.activate
     @patch("amazonorders.gift_cards.datetime", wraps=datetime)
@@ -251,5 +283,5 @@ class TestGiftCards(UnitTestCase):
 
         # THEN
         self.assertTrue(found_table)
-        self.assertEqual(len(activity), 15)
+        self.assertEqual(len(activity), 11)
         self.assertIsNone(next_page_url)
