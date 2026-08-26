@@ -10,6 +10,9 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - `AmazonGiftCards` with `get_balance()` and `get_gift_card_activity()` for read-only access to the Gift Card balance page (`/gc/balance`), and the `GiftCardActivity` entity (date, description, signed amount, closing balance, and Order references). Parsing is validated against sanitized captures of the live page.
 - `gift-card-balance` and `gift-card-activity` CLI commands.
+- `AmazonGiftCards.last_activity_pull` (a `GiftCardActivityPullResult` with `pages_walked`, `rows_parsed`, and `stop_reason`) for per-pull observability.
+- Mid-pagination failures in `get_gift_card_activity()` now carry `partial_activity` (the entries fetched before the failure) in the exception `meta` alongside `next_page_url`, making resume composable.
+- Documented (and covered with a test) that `GiftCardActivity.order_number` can be `None` on applied-to-order debit rows rendered without an Order anchor.
 
 
 ## [4.4.7](https://github.com/alexdlaird/amazon-orders/compare/4.4.6...4.4.7) - 2026-08-02
