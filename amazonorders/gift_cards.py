@@ -37,6 +37,34 @@ def _parse_gift_card_activity_page(parsed: Tag,
     return table_tag is not None, activity, next_page_url
 
 
+class GiftCardActivityPullResult:
+    """
+    Metadata about the most recent successful call to
+    :func:`~amazonorders.gift_cards.AmazonGiftCards.get_gift_card_activity`.
+    """
+
+    def __init__(self,
+                 pages_walked: int,
+                 rows_parsed: int,
+                 stop_reason: str) -> None:
+        #: The number of pages fetched during the pull.
+        self.pages_walked: int = pages_walked
+        #: The number of GiftCardActivity entries returned.
+        self.rows_parsed: int = rows_parsed
+        #: Why paging stopped: ``no_more_pages`` (the final page was reached), ``window_exceeded``
+        #: (a row older than the ``days`` window was encountered), ``no_activity_table`` (the page
+        #: rendered with no activity table, the legitimate zero-activity state), or
+        #: ``single_page_requested`` (``keep_paging`` was ``False`` and more pages existed).
+        self.stop_reason: str = stop_reason
+
+    def __repr__(self) -> str:
+        return (f"<GiftCardActivityPullResult: {self.pages_walked} pages, "
+                f"{self.rows_parsed} rows, \"{self.stop_reason}\">")
+
+    def __str__(self) -> str:  # pragma: no cover
+        return f"{self.pages_walked} pages, {self.rows_parsed} rows, {self.stop_reason}"
+
+
 class AmazonGiftCards:
     """
     Using an authenticated :class:`~amazonorders.session.AmazonSession`, can be used to query Amazon
@@ -61,6 +89,12 @@ class AmazonGiftCards:
         self.debug: bool = debug
         if self.debug:
             logger.setLevel(logging.DEBUG)
+
+        #: Metadata about the most recent successful
+        #: :func:`~amazonorders.gift_cards.AmazonGiftCards.get_gift_card_activity` pull. ``None``
+        #: before the first pull, and reset to ``None`` at the start of each pull (so it stays
+        #: ``None`` if the pull raises).
+        self.last_activity_pull: Optional[GiftCardActivityPullResult] = None
 
     def get_balance(self) -> float:
         """
@@ -91,26 +125,39 @@ class AmazonGiftCards:
         """
         Get Amazon Gift Card activity for a given number of days.
 
+        On success, :attr:`last_activity_pull` is populated with metadata about the pull. On a
+        mid-pagination failure, the raised :class:`~amazonorders.exception.AmazonOrdersError`'s
+        :attr:`~amazonorders.exception.AmazonOrdersError.meta` carries ``next_page_url`` (where
+        paging stopped) and ``partial_activity`` (the entries fetched before the failure) —
+        resuming with ``next_page_url`` and prepending ``partial_activity`` to the resumed call's
+        result composes the complete window. Keep that order (``partial_activity`` first): entries
+        are newest-first, matching the ledger order the page renders.
+
         :param days: The number of days worth of Gift Card activity to get.
         :param next_page_url: If a call to this method previously errored out, passing the exception's
             :attr:`~amazonorders.exception.AmazonOrdersError.meta` value for ``next_page_url`` will
             continue paging where it left off.
         :param keep_paging: ``False`` if only one page should be fetched.
-        :return: A list of the requested GiftCardActivity entries.
+        :return: A list of the requested GiftCardActivity entries, newest first.
         """
         if not self.amazon_session.is_authenticated:
             raise AmazonOrdersError("Call AmazonSession.login() to authenticate first.")
+
+        self.last_activity_pull = None
 
         url = next_page_url or self.config.constants.GIFT_CARD_BALANCE_URL
         min_date = datetime.date.today() - datetime.timedelta(days=days)
 
         activity: List[GiftCardActivity] = []
-        first_page = True
-        while first_page or keep_paging:
-            first_page = False
+        pages_walked = 0
+        stop_reason = ""
+        while True:
+            meta = {"next_page_url": url, "partial_activity": activity}
 
             page_response = self.amazon_session.get(url)
-            self.amazon_session.check_response(page_response, meta={"next_page_url": url})
+            self.amazon_session.check_response(page_response, meta=meta)
+
+            pages_walked += 1
 
             found_table, loaded_activity, next_page_url = (
                 _parse_gift_card_activity_page(page_response.parsed, self.config)
@@ -119,20 +166,33 @@ class AmazonGiftCards:
             if not found_table:
                 if util.select_one(page_response.parsed, self.config.selectors.GIFT_CARD_BALANCE_SELECTOR):
                     # The page rendered (the balance is present), there is just no activity to show
+                    stop_reason = "no_activity_table"
                     break
 
-                raise AmazonOrdersError("Could not parse Gift Card activity. Check if Amazon changed the HTML.")
+                raise AmazonOrdersError("Could not parse Gift Card activity. Check if Amazon changed the HTML.",
+                                        meta=meta)
 
             for entry in loaded_activity:
                 if entry.activity_date is None or entry.activity_date >= min_date:
                     activity.append(entry)
                 else:
                     next_page_url = None
+                    stop_reason = "window_exceeded"
                     break
 
             if not next_page_url:
+                if not stop_reason:
+                    stop_reason = "no_more_pages"
+                break
+
+            if not keep_paging:
+                stop_reason = "single_page_requested"
                 break
 
             url = next_page_url
+
+        self.last_activity_pull = GiftCardActivityPullResult(pages_walked=pages_walked,
+                                                             rows_parsed=len(activity),
+                                                             stop_reason=stop_reason)
 
         return activity

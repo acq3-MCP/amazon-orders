@@ -44,10 +44,12 @@ class GiftCardActivity(Parsable):
         self.is_credit: bool = bool(self.amount and self.amount > 0)
         #: The Gift Card balance after this activity was applied.
         self.closing_balance: Optional[float] = self.safe_parse(self._parse_closing_balance)
-        #: The Order number the GiftCardActivity references. ``None`` if the activity is not
-        #: associated with an Order.
+        #: The Order number the GiftCardActivity references. ``None`` when the row renders no
+        #: Order anchor: claim code redemptions and some refund rows, but also some
+        #: applied-to-order debit rows (observed in the wild on small amounts, likely digital
+        #: orders) — so ``None`` on a debit is expected page behavior, not data loss.
         self.order_number: Optional[str] = self.safe_parse(self._parse_order_number)
-        #: The Order details link. ``None`` if the activity is not associated with an Order.
+        #: The Order details link. ``None`` whenever :attr:`order_number` is ``None``.
         self.order_details_link: Optional[str] = self.safe_parse(self._parse_order_details_link)
 
     def __repr__(self) -> str:

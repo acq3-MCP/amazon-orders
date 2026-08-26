@@ -8,6 +8,7 @@ from unittest.mock import patch
 import responses
 from bs4 import BeautifulSoup
 
+from amazonorders.entity.gift_card_activity import GiftCardActivity
 from amazonorders.exception import AmazonOrdersError, AmazonOrdersAuthRedirectError
 from amazonorders.gift_cards import AmazonGiftCards, _parse_gift_card_activity_page
 from amazonorders.session import AmazonSession
@@ -110,6 +111,10 @@ class TestGiftCards(UnitTestCase):
 
         # THEN
         self.assertEqual(15, len(activity))
+        pull = self.amazon_gift_cards.last_activity_pull
+        self.assertEqual(1, pull.pages_walked)
+        self.assertEqual(15, pull.rows_parsed)
+        self.assertEqual("single_page_requested", pull.stop_reason)
         entry = activity[0]
         self.assertEqual(entry.activity_date, datetime.date(2026, 5, 12))
         self.assertEqual(entry.description, "Gift Card applied to Amazon.com order")
@@ -153,6 +158,10 @@ class TestGiftCards(UnitTestCase):
         self.assertEqual(1, resp3.call_count)
         self.assertIn("next=", resp2.calls[0].request.url)
         self.assertIn("next=", resp3.calls[0].request.url)
+        pull = self.amazon_gift_cards.last_activity_pull
+        self.assertEqual(3, pull.pages_walked)
+        self.assertEqual(41, pull.rows_parsed)
+        self.assertEqual("no_more_pages", pull.stop_reason)
 
     @responses.activate
     @patch("amazonorders.gift_cards.datetime", wraps=datetime)
@@ -199,6 +208,10 @@ class TestGiftCards(UnitTestCase):
         self.assertEqual(activity[0].activity_date, datetime.date(2026, 5, 12))
         self.assertEqual(activity[1].activity_date, datetime.date(2026, 5, 11))
         self.assertEqual(1, resp.call_count)
+        pull = self.amazon_gift_cards.last_activity_pull
+        self.assertEqual(1, pull.pages_walked)
+        self.assertEqual(2, pull.rows_parsed)
+        self.assertEqual("window_exceeded", pull.stop_reason)
 
     @responses.activate
     def test_get_gift_card_activity_zero_activity(self):
@@ -212,6 +225,10 @@ class TestGiftCards(UnitTestCase):
         # THEN
         self.assertEqual(0, len(activity))
         self.assertEqual(1, resp.call_count)
+        pull = self.amazon_gift_cards.last_activity_pull
+        self.assertEqual(1, pull.pages_walked)
+        self.assertEqual(0, pull.rows_parsed)
+        self.assertEqual("no_activity_table", pull.stop_reason)
 
     @responses.activate
     def test_get_gift_card_activity_invalid_page(self):
@@ -250,7 +267,67 @@ class TestGiftCards(UnitTestCase):
         # THEN
         self.assertEqual(1, resp.call_count)
         self.assertEqual(cm.exception.meta,
-                         {"next_page_url": self.test_config.constants.GIFT_CARD_BALANCE_URL})
+                         {"next_page_url": self.test_config.constants.GIFT_CARD_BALANCE_URL,
+                          "partial_activity": []})
+        self.assertIsNone(self.amazon_gift_cards.last_activity_pull)
+
+    @responses.activate
+    @patch("amazonorders.gift_cards.datetime", wraps=datetime)
+    def test_get_gift_card_activity_mid_pagination_failure_partial_results(self, mock_today):
+        # GIVEN
+        mock_today.date.today.return_value = datetime.date(2026, 5, 15)
+        self.amazon_session.is_authenticated = True
+        resp1 = self._given_gift_card_page_exists("gift-card-balance-activity.html")
+        resp2 = responses.add(
+            responses.GET,
+            f"{self.test_config.constants.GIFT_CARD_BALANCE_URL}",
+            status=503,
+        )
+
+        # WHEN
+        with self.assertRaises(AmazonOrdersError) as cm:
+            self.amazon_gift_cards.get_gift_card_activity(days=4000)
+
+        # THEN the rows fetched before the failure are recoverable alongside the resume URL
+        self.assertEqual(1, resp1.call_count)
+        self.assertEqual(1, resp2.call_count)
+        partial = cm.exception.meta["partial_activity"]
+        self.assertEqual(15, len(partial))
+        self.assertEqual(partial[0].activity_date, datetime.date(2026, 5, 12))
+        self.assertIn("next=", cm.exception.meta["next_page_url"])
+        self.assertIsNone(self.amazon_gift_cards.last_activity_pull)
+
+    def test_gift_card_activity_anchorless_debit_row(self):
+        # GIVEN a debit row rendered with no Order anchor, as observed in production on
+        # small-amount (likely digital) orders
+        row_html = """
+        <tr>
+            <td> April 9, 2026 </td>
+            <td>
+                <span>Gift Card applied to Amazon.com order</span>
+            </td>
+            <td>
+-$2.12
+            </td>
+            <td>
+$85.46
+            </td>
+        </tr>
+        """
+        parsed = BeautifulSoup(row_html, self.test_config.bs4_parser)
+        row_tag = parsed.select_one("tr")
+
+        # WHEN
+        entry = GiftCardActivity(row_tag, self.test_config)
+
+        # THEN the missing anchor yields no Order reference, not a parse failure
+        self.assertEqual(entry.activity_date, datetime.date(2026, 4, 9))
+        self.assertEqual(entry.description, "Gift Card applied to Amazon.com order")
+        self.assertEqual(entry.amount, -2.12)
+        self.assertFalse(entry.is_credit)
+        self.assertEqual(entry.closing_balance, 85.46)
+        self.assertIsNone(entry.order_number)
+        self.assertIsNone(entry.order_details_link)
 
     def test_parse_gift_card_activity_page(self):
         # GIVEN
