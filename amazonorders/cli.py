@@ -346,6 +346,9 @@ def digital_orders(ctx: Context, **kwargs: Any) -> None:
     """
     amazon_session = ctx.obj["amazon_session"]
 
+    if kwargs["all_years"] and kwargs["year"]:
+        ctx.fail("Only one of --year or --all may be used at a time.")
+
     try:
         _authenticate(amazon_session)
 

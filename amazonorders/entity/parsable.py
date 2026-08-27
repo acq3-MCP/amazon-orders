@@ -182,8 +182,8 @@ class Parsable:
             url = f"{self.config.constants.BASE_URL}{url}"
         return url
 
-    def to_currency(self,
-                    value: Union[str, int, float]) -> Union[int, float, None]:
+    @staticmethod
+    def to_currency(value: Union[str, int, float]) -> Union[int, float, None]:
         """
         Clean up a currency, stripping non-numeric values and returning it as a primitive.
 

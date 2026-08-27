@@ -310,6 +310,9 @@ class TestDigitalOrders(UnitTestCase):
         order = self.test_config.order_cls(details_tag, self.test_config, full_details=True)
 
         self.assertEqual("D01-1000111-2000222", order.order_number)
+        # The ledger row anchors to the digital order, so the join is direct by order number
+        self.assertEqual(debit.order_number, order.order_number)
+        self.assertIn("orderID=D01-1000111-2000222", debit.order_details_link)
         self.assertEqual(debit.activity_date, order.order_placed_date)
         self.assertEqual(debit.amount, order.gift_card)
 

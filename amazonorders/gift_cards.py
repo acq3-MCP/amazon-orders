@@ -111,7 +111,7 @@ class AmazonGiftCards:
         balance_tag = util.select_one(page_response.parsed, self.config.selectors.GIFT_CARD_BALANCE_SELECTOR)
         balance = None
         if balance_tag:
-            balance = Parsable(page_response.parsed, self.config).to_currency(balance_tag.text)
+            balance = Parsable.to_currency(balance_tag.text)
 
         if balance is None:
             raise AmazonOrdersError("Could not parse Gift Card balance. Check if Amazon changed the HTML.")
@@ -151,6 +151,7 @@ class AmazonGiftCards:
         activity: List[GiftCardActivity] = []
         pages_walked = 0
         stop_reason = ""
+        warned_unparsed_date = False
         while True:
             meta = {"next_page_url": url, "partial_activity": activity}
 
@@ -159,9 +160,14 @@ class AmazonGiftCards:
 
             pages_walked += 1
 
-            found_table, loaded_activity, next_page_url = (
-                _parse_gift_card_activity_page(page_response.parsed, self.config)
-            )
+            try:
+                found_table, loaded_activity, next_page_url = (
+                    _parse_gift_card_activity_page(page_response.parsed, self.config)
+                )
+            except AmazonOrdersError as e:
+                # A row-level parse failure should still carry the resume metadata
+                e.meta = {**meta, **(e.meta or {})}
+                raise
 
             if not found_table:
                 if util.select_one(page_response.parsed, self.config.selectors.GIFT_CARD_BALANCE_SELECTOR):
@@ -173,6 +179,11 @@ class AmazonGiftCards:
                                         meta=meta)
 
             for entry in loaded_activity:
+                if entry.activity_date is None and not warned_unparsed_date:
+                    logger.warning("GiftCardActivity.activity_date could not be parsed, so the days window "
+                                   "cannot apply to such rows and paging may walk the full ledger. "
+                                   "Check if Amazon changed the HTML.")
+                    warned_unparsed_date = True
                 if entry.activity_date is None or entry.activity_date >= min_date:
                     activity.append(entry)
                 else:

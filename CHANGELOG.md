@@ -19,6 +19,16 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - `digital-orders` CLI command.
 - Digital order details pages now parse with `get_order("D01-…")` / `full_details=True`: `Order.grand_total` ("Total for this Order"), `Order.estimated_tax` ("Tax Collected"), and `Order.gift_card` ("Gift Card") gain fallbacks for the digital details page's row labels.
 
+### Fixed
+
+- `GiftCardActivity.order_number` now resolves digital (`D01-…`) Order IDs — ledger rows anchored to digital orders previously lost their Order reference entirely.
+- Row-level parse failures during `get_gift_card_activity()` pagination now carry the documented resume metadata (`next_page_url`, `partial_activity`) instead of raising without `meta`.
+- `AmazonOrders.last_history_pull` is no longer populated when a `full_details` pull fails mid-fetch, honoring its stays-`None`-on-failure contract.
+- The empty-history detection in `get_order_history()` parses the count header robustly (comma-grouped counts, arbitrary label text) instead of a fragile split that could escape as a bare `ValueError`.
+- `digital-orders --year --all` now fails explicitly instead of silently ignoring `--year`.
+- `get_gift_card_activity()` logs a warning when activity dates fail to parse (the `days` window cannot apply to such rows), instead of silently walking the full ledger.
+- `Parsable.to_currency()` is now a static method (it never used instance state), usable without constructing an entity.
+
 
 ## [4.4.7](https://github.com/alexdlaird/amazon-orders/compare/4.4.6...4.4.7) - 2026-08-02
 

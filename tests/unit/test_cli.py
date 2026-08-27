@@ -686,3 +686,17 @@ class TestCli(UnitTestCase):
         self.assertIn("Amount: -$19.48", response.output)
         self.assertIn("Closing Balance: $0.00", response.output)
         self.assertIn("26 Gift Card activity entries parsed", response.output)
+
+    def test_digital_orders_command_year_and_all_conflict(self):
+        # WHEN
+        response = self.runner.invoke(amazon_orders_cli,
+                                      [
+                                          "--config-path", self.test_config.config_path,
+                                          "--username", "some-username@gmail.com",
+                                          "--password", "some-password",
+                                          "digital-orders", "--year", 2020, "--all"
+                                      ])
+
+        # THEN
+        self.assertNotEqual(0, response.exit_code)
+        self.assertIn("Only one of --year or --all", response.output)

@@ -136,6 +136,10 @@ class TestGiftCards(UnitTestCase):
         self.assertEqual(entry.description, "Refund from Amazon.com order")
         self.assertEqual(entry.amount, 14.55)
         self.assertTrue(entry.is_credit)
+        # A row anchored to a digital Order resolves its D01- id like any other
+        entry = activity[6]
+        self.assertEqual(entry.order_number, "D01-1000111-2000222")
+        self.assertIn("orderID=D01-1000111-2000222", entry.order_details_link)
         self.assertEqual(1, resp.call_count)
 
     @responses.activate
@@ -328,6 +332,44 @@ $85.46
         self.assertEqual(entry.closing_balance, 85.46)
         self.assertIsNone(entry.order_number)
         self.assertIsNone(entry.order_details_link)
+
+    @responses.activate
+    @patch("amazonorders.gift_cards.datetime", wraps=datetime)
+    def test_get_gift_card_activity_row_parse_failure_carries_resume_meta(self, mock_today):
+        # GIVEN page 2 renders a row whose amount cell cannot be parsed
+        mock_today.date.today.return_value = datetime.date(2026, 5, 15)
+        self.amazon_session.is_authenticated = True
+        resp1 = self._given_gift_card_page_exists("gift-card-balance-activity.html")
+        broken_page = """
+        <div id="gc-balance-table">
+            <table class="a-bordered">
+                <tr><th>Date</th><th>Description</th><th>Amount</th><th>Closing balance</th></tr>
+                <tr>
+                    <td> March 1, 2025 </td>
+                    <td><span>Gift Card applied to Amazon.com order</span></td>
+                    <td>--</td>
+                    <td>$1.00</td>
+                </tr>
+            </table>
+        </div>
+        """
+        resp2 = responses.add(
+            responses.GET,
+            f"{self.test_config.constants.GIFT_CARD_BALANCE_URL}",
+            body=broken_page,
+            status=200,
+        )
+
+        # WHEN
+        with self.assertRaises(AmazonOrdersError) as cm:
+            self.amazon_gift_cards.get_gift_card_activity(days=4000)
+
+        # THEN the row-level failure still carries the resume metadata
+        self.assertEqual(1, resp1.call_count)
+        self.assertEqual(1, resp2.call_count)
+        self.assertEqual(15, len(cm.exception.meta["partial_activity"]))
+        self.assertIn("next=", cm.exception.meta["next_page_url"])
+        self.assertIsNone(self.amazon_gift_cards.last_activity_pull)
 
     def test_gift_card_activity_order_number_from_description(self):
         # GIVEN a row whose Order reference appears only in the description text, with no anchor

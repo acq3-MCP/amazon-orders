@@ -153,7 +153,7 @@ class AmazonOrders:
         """
         Get the Amazon Order history for a given time period.
 
-        :param year: The year for which to get history. Ignored if ``time_filter`` is provided.
+        :param year: The year for which to get history. May not be combined with ``time_filter``.
             Defaults to the current year if neither ``year`` nor ``time_filter`` is specified.
         :param start_index: The index of the Order from which to start fetching in the history. See
             :attr:`~amazonorders.entity.order.Order.index` to correlate, or if a call to this method previously errored
@@ -238,9 +238,9 @@ class AmazonOrders:
                                      self.config.selectors.ORDER_HISTORY_ENTITY_SELECTOR)
 
             if not order_tags:
-                (order_count, _) = order_count_tag.text.split(" ", 2) if order_count_tag else ("0", None)
+                count_match = re.match(r"\s*([\d,]+)", order_count_tag.text) if order_count_tag else None
 
-                if order_count_tag and int(order_count) <= current_index:
+                if count_match and int(count_match.group(1).replace(",", "")) <= current_index:
                     stop_reason = "empty_history"
                     break
                 else:
@@ -266,12 +266,14 @@ class AmazonOrders:
                 stop_reason = "single_page_requested"
                 logger.debug("keep_paging is False, not paging")
 
+        orders = await asyncio.gather(*order_tasks)
+
         self.last_history_pull = OrderHistoryPullResult(pages_walked=pages_walked,
                                                         rows_parsed=len(order_tasks),
                                                         header_count=header_count,
                                                         stop_reason=stop_reason)
 
-        return await asyncio.gather(*order_tasks)
+        return orders
 
     def _build_order(self,
                      order_tag: List[Tag],
