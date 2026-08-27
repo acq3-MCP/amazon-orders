@@ -593,3 +593,110 @@ class TestCli(UnitTestCase):
         self.assertIn("max_auth_attempts\" updated", response.output)
         with open(self.test_config.config_path, "r") as f:
             self.assertIn("max_auth_attempts: 7", f.read())
+
+    @responses.activate
+    def test_digital_orders_command(self):
+        # GIVEN
+        self.given_unauthenticated_home_page()
+        self.given_login_responses_success()
+        with open(os.path.join(self.RESOURCES_DIR, "digitalorders", "digital-order-history-2026-0.html"), "r",
+                  encoding="utf-8") as f:
+            resp = responses.add(
+                responses.GET,
+                f"{self.test_config.constants.ORDER_HISTORY_URL}",
+                body=f.read(),
+                status=200,
+            )
+
+        # WHEN
+        response = self.runner.invoke(amazon_orders_cli,
+                                      [
+                                          "--config-path", self.test_config.config_path,
+                                          "--username", "some-username@gmail.com",
+                                          "--password", "some-password",
+                                          "digital-orders", "--year", 2026
+                                      ])
+
+        # THEN
+        self.assertEqual(0, response.exit_code)
+        self.assert_login_responses_success()
+        self.assertEqual(1, resp.call_count)
+        self.assertIn("orderFilter=digital", resp.calls[0].request.url)
+        self.assertIn("timeFilter=year-2026", resp.calls[0].request.url)
+        self.assertIn("Order #D01-1000111-2000222", response.output)
+        self.assertIn("1 digital Orders parsed", response.output)
+
+    @responses.activate
+    def test_gift_card_balance_command(self):
+        # GIVEN
+        self.given_unauthenticated_home_page()
+        self.given_login_responses_success()
+        with open(os.path.join(self.RESOURCES_DIR, "giftcards", "gift-card-balance-activity.html"), "r",
+                  encoding="utf-8") as f:
+            resp = responses.add(
+                responses.GET,
+                f"{self.test_config.constants.GIFT_CARD_BALANCE_URL}",
+                body=f.read(),
+                status=200,
+            )
+
+        # WHEN
+        response = self.runner.invoke(amazon_orders_cli,
+                                      [
+                                          "--config-path", self.test_config.config_path,
+                                          "--username", "some-username@gmail.com",
+                                          "--password", "some-password",
+                                          "gift-card-balance"
+                                      ])
+
+        # THEN
+        self.assertEqual(0, response.exit_code)
+        self.assert_login_responses_success()
+        self.assertEqual(1, resp.call_count)
+        self.assertIn("Gift Card Balance: $0.00", response.output)
+
+    @responses.activate
+    def test_gift_card_activity_command(self):
+        # GIVEN
+        self.given_unauthenticated_home_page()
+        self.given_login_responses_success()
+        for html_file in ["gift-card-balance-activity.html", "gift-card-balance-activity-last-page.html"]:
+            with open(os.path.join(self.RESOURCES_DIR, "giftcards", html_file), "r",
+                      encoding="utf-8") as f:
+                responses.add(
+                    responses.GET,
+                    f"{self.test_config.constants.GIFT_CARD_BALANCE_URL}",
+                    body=f.read(),
+                    status=200,
+                )
+
+        # WHEN
+        response = self.runner.invoke(amazon_orders_cli,
+                                      [
+                                          "--config-path", self.test_config.config_path,
+                                          "--username", "some-username@gmail.com",
+                                          "--password", "some-password",
+                                          "gift-card-activity", "--days", 4000
+                                      ])
+
+        # THEN
+        self.assertEqual(0, response.exit_code)
+        self.assert_login_responses_success()
+        self.assertIn("Gift Card Activity: 2026-05-12", response.output)
+        self.assertIn("Amount: -$19.48", response.output)
+        self.assertIn("Closing Balance: $0.00", response.output)
+        self.assertIn("26 Gift Card activity entries parsed", response.output)
+
+    def test_digital_orders_command_year_and_all_conflict(self):
+        # WHEN
+        response = self.runner.invoke(amazon_orders_cli,
+                                      [
+                                          "--config-path", self.test_config.config_path,
+                                          "--username", "some-username@gmail.com",
+                                          "--password", "some-password",
+                                          "digital-orders", "--year", 2020, "--all"
+                                      ])
+
+        # THEN
+        self.assertNotEqual(0, response.exit_code)
+        self.assertIn("Only one of --year or --all", response.output)

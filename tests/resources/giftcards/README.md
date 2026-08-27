@@ -15,8 +15,9 @@ lives inside it.
 
 Sanitization applied (DOM structure is byte-accurate to the captures):
 
-- Order IDs remapped to fake `111-55009xx-24786xx` values (repeats preserved; the map is
-  consistent within each capture run)
+- Order IDs remapped to fake values — physical to `111-55009xx-24786xx`, digital to
+  `D01-100xxxx-200xxxx` (repeats preserved; the digital order the 2026-04-09 debit anchors
+  to keeps the same fake ID as its fixtures in `tests/resources/digitalorders/`)
 - Claim code visible last-4 remapped (`xxxx-xxxxxx-TSnn`) and serial numbers replaced with
   fake same-length digits
 - Amounts and closing balances replaced with the real ledger scaled by a constant factor,

@@ -114,8 +114,8 @@ class AmazonDigitalOrders:
         Get digital Orders for a single time window. On success, :attr:`last_digital_pull` is
         populated with the window's stats.
 
-        :param year: The year for which to get digital Orders. Ignored if ``time_filter`` is
-            provided. Defaults to the current year if neither is specified.
+        :param year: The year for which to get digital Orders. May not be combined with
+            ``time_filter``. Defaults to the current year if neither is specified.
         :param time_filter: The time filter to use (``last30``, ``months-3``, or ``year-YYYY``).
         :param full_details: Get the full details for each Order. This will execute an additional
             request per Order.

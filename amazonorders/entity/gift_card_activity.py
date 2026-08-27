@@ -14,7 +14,7 @@ from amazonorders.exception import AmazonOrdersError
 
 logger = logging.getLogger(__name__)
 
-ORDER_NUMBER_REGEX = re.compile(r"(\d{3}-\d{7}-\d{7})")
+ORDER_NUMBER_REGEX = re.compile(r"((?:\d{3}|[A-Z]\d{2})-\d{7}-\d{7})")
 
 
 class GiftCardActivity(Parsable):
@@ -38,16 +38,18 @@ class GiftCardActivity(Parsable):
             selector=self.config.selectors.FIELD_GIFT_CARD_ACTIVITY_DESCRIPTION_SELECTOR
         )
         #: The GiftCardActivity amount. Negative when the balance was debited (e.g. applied to
-        #: an Order), positive when it was credited (e.g. a Reload or refund).
-        self.amount: float = self.safe_parse(self._parse_amount)
+        #: an Order), positive when it was credited (e.g. a Reload or refund). ``None`` only when
+        #: the amount could not be parsed and ``warn_on_missing_required_field`` is set.
+        self.amount: Optional[float] = self.safe_parse(self._parse_amount)
         #: The GiftCardActivity credited the balance or not.
         self.is_credit: bool = bool(self.amount and self.amount > 0)
         #: The Gift Card balance after this activity was applied.
         self.closing_balance: Optional[float] = self.safe_parse(self._parse_closing_balance)
-        #: The Order number the GiftCardActivity references. ``None`` when the row renders no
-        #: Order anchor: claim code redemptions and some refund rows, but also some
-        #: applied-to-order debit rows (observed in the wild on small amounts, likely digital
-        #: orders) — so ``None`` on a debit is expected page behavior, not data loss.
+        #: The Order number the GiftCardActivity references (physical ``111-…`` or digital
+        #: ``D01-…`` IDs). ``None`` when the row renders no Order anchor: claim code redemptions
+        #: and some refund rows, but also some applied-to-order debit rows (observed in the wild
+        #: on small amounts, likely digital orders) — so ``None`` on a debit is expected page
+        #: behavior, not data loss.
         self.order_number: Optional[str] = self.safe_parse(self._parse_order_number)
         #: The Order details link. ``None`` whenever :attr:`order_number` is ``None``.
         self.order_details_link: Optional[str] = self.safe_parse(self._parse_order_details_link)
