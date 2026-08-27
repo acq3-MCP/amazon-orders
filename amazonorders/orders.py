@@ -5,6 +5,7 @@ import asyncio
 import concurrent.futures
 import datetime
 import logging
+import re
 from typing import Any, Callable, List, Optional
 from urllib.parse import quote
 
@@ -17,6 +18,38 @@ from amazonorders.exception import AmazonOrdersError, AmazonOrdersNotFoundError
 from amazonorders.session import AmazonSession
 
 logger = logging.getLogger(__name__)
+
+
+class OrderHistoryPullResult:
+    """
+    Metadata about the most recent successful call to
+    :func:`~amazonorders.orders.AmazonOrders.get_order_history`.
+    """
+
+    def __init__(self,
+                 pages_walked: int,
+                 rows_parsed: int,
+                 header_count: Optional[int],
+                 stop_reason: str) -> None:
+        #: The number of history pages fetched during the pull.
+        self.pages_walked: int = pages_walked
+        #: The number of Orders returned.
+        self.rows_parsed: int = rows_parsed
+        #: The Order count the history page's own header reported for the window ("N orders placed
+        #: in …"), or ``None`` if the header could not be parsed. When paging from the start of the
+        #: window, ``rows_parsed`` matching this value is a parse-completeness check.
+        self.header_count: Optional[int] = header_count
+        #: Why paging stopped: ``no_more_pages`` (the final page was reached), ``empty_history``
+        #: (the window contains no Orders), or ``single_page_requested`` (``keep_paging`` was
+        #: ``False``).
+        self.stop_reason: str = stop_reason
+
+    def __repr__(self) -> str:
+        return (f"<OrderHistoryPullResult: {self.pages_walked} pages, "
+                f"{self.rows_parsed} rows, \"{self.stop_reason}\">")
+
+    def __str__(self) -> str:  # pragma: no cover
+        return f"{self.pages_walked} pages, {self.rows_parsed} rows, {self.stop_reason}"
 
 
 class AmazonOrders:
@@ -43,6 +76,12 @@ class AmazonOrders:
         self.debug: bool = debug
         if self.debug:
             logger.setLevel(logging.DEBUG)
+
+        #: Metadata about the most recent successful
+        #: :func:`~amazonorders.orders.AmazonOrders.get_order_history` pull. ``None`` before the
+        #: first pull, and reset to ``None`` at the start of each pull (so it stays ``None`` if
+        #: the pull raises).
+        self.last_history_pull: Optional[OrderHistoryPullResult] = None
 
     def get_order(self,
                   order_id: str,
@@ -135,6 +174,8 @@ class AmazonOrders:
         if time_filter and year:
             raise AmazonOrdersError("Only one of 'year' or 'time_filter' may be used at a time.")
 
+        self.last_history_pull = None
+
         # Determine the filter value to use
         if time_filter:
             # Validate time_filter value
@@ -176,20 +217,31 @@ class AmazonOrders:
                                   full_details: bool,
                                   current_index: int) -> List[Order]:
         order_tasks = []
+        pages_walked = 0
+        header_count = None
+        stop_reason = ""
 
         while next_page:
             page_response = self.amazon_session.get(next_page)
             self.amazon_session.check_response(page_response, meta={"index": current_index})
 
+            pages_walked += 1
+
+            order_count_tag = util.select_one(page_response.parsed,
+                                              self.config.selectors.ORDER_HISTORY_COUNT_SELECTOR)
+            if pages_walked == 1 and order_count_tag:
+                header_count_match = re.match(r"\s*([\d,]+)", order_count_tag.text)
+                if header_count_match:
+                    header_count = int(header_count_match.group(1).replace(",", ""))
+
             order_tags = util.select(page_response.parsed,
                                      self.config.selectors.ORDER_HISTORY_ENTITY_SELECTOR)
 
             if not order_tags:
-                order_count_tag = util.select_one(page_response.parsed,
-                                                  self.config.selectors.ORDER_HISTORY_COUNT_SELECTOR)
                 (order_count, _) = order_count_tag.text.split(" ", 2) if order_count_tag else ("0", None)
 
                 if order_count_tag and int(order_count) <= current_index:
+                    stop_reason = "empty_history"
                     break
                 else:
                     raise AmazonOrdersError("Could not parse Order history. Check if Amazon changed the HTML.")
@@ -208,9 +260,16 @@ class AmazonOrders:
                     if not next_page.startswith("http"):
                         next_page = f"{self.config.constants.BASE_URL}{next_page}"
                 else:
+                    stop_reason = "no_more_pages"
                     logger.debug("No next page")
             else:
+                stop_reason = "single_page_requested"
                 logger.debug("keep_paging is False, not paging")
+
+        self.last_history_pull = OrderHistoryPullResult(pages_walked=pages_walked,
+                                                        rows_parsed=len(order_tasks),
+                                                        header_count=header_count,
+                                                        stop_reason=stop_reason)
 
         return await asyncio.gather(*order_tasks)
 

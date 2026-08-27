@@ -22,6 +22,11 @@ Main Interface
     :private-members:
     :show-inheritance:
 
+.. automodule:: amazonorders.digital_orders
+    :members:
+    :private-members:
+    :show-inheritance:
+
 Session Management
 ------------------
 

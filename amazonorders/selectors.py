@@ -84,7 +84,10 @@ class Selectors:
 
     ORDER_HISTORY_ENTITY_SELECTOR = ["div.order-card",
                                      "div.order"]
-    ORDER_HISTORY_COUNT_SELECTOR = ".js-yo-container span.num-orders"
+    ORDER_HISTORY_COUNT_SELECTOR = [".js-yo-container span.num-orders",
+                                    # The Digital Orders tab renders the count in the time-filter form label
+                                    "form.js-time-filter-form label b"]
+    ORDER_HISTORY_TIME_FILTER_OPTIONS_SELECTOR = "form.js-time-filter-form select[name='timeFilter'] option"
     ORDER_DETAILS_ENTITY_SELECTOR = ["div#orderDetails",
                                      "div#ordersContainer",
                                      "div#odp-main-section"]
