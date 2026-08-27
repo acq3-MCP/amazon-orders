@@ -17,6 +17,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - `AmazonOrders.last_history_pull` (an `OrderHistoryPullResult` with `pages_walked`, `rows_parsed`, `header_count`, and `stop_reason`) for order history pull observability.
 - `ORDER_HISTORY_COUNT_SELECTOR` now also matches the Digital Orders tab's count header, fixing a parse error on empty digital history windows.
 - `digital-orders` CLI command.
+- Digital order details pages now parse with `get_order("D01-…")` / `full_details=True`: `Order.grand_total` ("Total for this Order"), `Order.estimated_tax` ("Tax Collected"), and `Order.gift_card` ("Gift Card") gain fallbacks for the digital details page's row labels.
 
 
 ## [4.4.7](https://github.com/alexdlaird/amazon-orders/compare/4.4.6...4.4.7) - 2026-08-02

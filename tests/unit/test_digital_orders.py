@@ -8,6 +8,7 @@ import responses
 
 from amazonorders.digital_orders import AmazonDigitalOrders
 from amazonorders.exception import AmazonOrdersError
+from amazonorders.orders import AmazonOrders
 from amazonorders.session import AmazonSession
 from tests.unittestcase import UnitTestCase
 
@@ -167,6 +168,68 @@ class TestDigitalOrders(UnitTestCase):
         self.assertEqual(1, len(cm.exception.meta["partial_orders"]))
         self.assertEqual("year-2025", cm.exception.meta["window"])
         self.assertIsNone(self.amazon_digital_orders.last_digital_pull)
+
+    @responses.activate
+    def test_get_digital_orders_full_details(self):
+        # GIVEN
+        self.amazon_session.is_authenticated = True
+        history_resp = self._given_digital_history_page_exists("digital-order-history-2026-0.html")
+        with open(os.path.join(self.RESOURCES_DIR, "digitalorders",
+                               "digital-order-details-D01-1000111-2000222.html"), "r",
+                  encoding="utf-8") as f:
+            details_resp = responses.add(
+                responses.GET,
+                f"{self.test_config.constants.ORDER_DETAILS_URL}",
+                body=f.read(),
+                status=200,
+            )
+
+        # WHEN
+        orders = self.amazon_digital_orders.get_digital_orders(year=2026, full_details=True)
+
+        # THEN the details page populates the payment breakdown, including the gift card amount
+        self.assertEqual(1, len(orders))
+        order = orders[0]
+        self.assertEqual("D01-1000111-2000222", order.order_number)
+        self.assertEqual(datetime.date(2026, 4, 9), order.order_placed_date)
+        # Clone semantics: the history card's grand_total (the pre-gift-card order total) wins;
+        # the details page's post-gift-card "Total for this Order" is what get_order() alone returns
+        self.assertEqual(2.90, order.grand_total)
+        self.assertEqual(2.73, order.subtotal)
+        self.assertEqual(2.73, order.total_before_tax)
+        self.assertEqual(0.18, order.estimated_tax)
+        self.assertEqual(-2.90, order.gift_card)
+        self.assertEqual("Amazon Visa", order.payment_method)
+        self.assertEqual(1111, order.payment_method_last_4)
+        self.assertEqual("Digital Item 01", order.items[0].title)
+        self.assertEqual(1, history_resp.call_count)
+        self.assertEqual(1, details_resp.call_count)
+
+    @responses.activate
+    def test_get_order_digital_details(self):
+        # GIVEN a free/promotional digital order rendered with no payment section
+        self.amazon_session.is_authenticated = True
+        amazon_orders = AmazonOrders(self.amazon_session)
+        with open(os.path.join(self.RESOURCES_DIR, "digitalorders",
+                               "digital-order-details-D01-1003552-2007104.html"), "r",
+                  encoding="utf-8") as f:
+            resp = responses.add(
+                responses.GET,
+                f"{self.test_config.constants.ORDER_DETAILS_URL}",
+                body=f.read(),
+                status=200,
+            )
+
+        # WHEN
+        order = amazon_orders.get_order("D01-1003552-2007104")
+
+        # THEN
+        self.assertEqual("D01-1003552-2007104", order.order_number)
+        self.assertEqual(0.0, order.grand_total)
+        self.assertEqual("Digital Item 27", order.items[0].title)
+        self.assertIsNone(order.payment_method)
+        self.assertIsNone(order.gift_card)
+        self.assertEqual(1, resp.call_count)
 
     @responses.activate
     def test_get_all_digital_orders_no_time_filters(self):
