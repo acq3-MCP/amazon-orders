@@ -13,6 +13,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - `AmazonGiftCards.last_activity_pull` (a `GiftCardActivityPullResult` with `pages_walked`, `rows_parsed`, and `stop_reason`) for per-pull observability.
 - Mid-pagination failures in `get_gift_card_activity()` now carry `partial_activity` (the entries fetched before the failure) in the exception `meta` alongside `next_page_url`, making resume composable.
 - Documented (and covered with a test) that `GiftCardActivity.order_number` can be `None` on applied-to-order debit rows rendered without an Order anchor.
+- `AmazonDigitalOrders` (`amazonorders/digital_orders.py`) with `get_digital_orders()` (one time window) and `get_all_digital_orders()` (full-history walk enumerating the page's own year dropdown) for the Digital Orders tab (`orderFilter=digital`, orders with `D01-` IDs, absent from the default history). Rows parse with the standard `Order` entity. Per-pull observability via `last_digital_pull`; mid-walk failures carry `partial_orders` and the failed `window` in the exception `meta`.
+- `AmazonOrders.last_history_pull` (an `OrderHistoryPullResult` with `pages_walked`, `rows_parsed`, `header_count`, and `stop_reason`) for order history pull observability.
+- `ORDER_HISTORY_COUNT_SELECTOR` now also matches the Digital Orders tab's count header, fixing a parse error on empty digital history windows.
+- `digital-orders` CLI command.
 
 
 ## [4.4.7](https://github.com/alexdlaird/amazon-orders/compare/4.4.6...4.4.7) - 2026-08-02

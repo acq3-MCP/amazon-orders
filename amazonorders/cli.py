@@ -17,6 +17,7 @@ from amazonorders import __version__, util
 from amazonorders.conf import AmazonOrdersConfig
 from amazonorders.entity.order import Order
 from amazonorders.entity.transaction import Transaction
+from amazonorders.digital_orders import AmazonDigitalOrders
 from amazonorders.entity.gift_card_activity import GiftCardActivity
 from amazonorders.exception import AmazonOrdersError, AmazonOrdersAuthError, AmazonOrdersAuthRedirectError
 from amazonorders.gift_cards import AmazonGiftCards
@@ -325,6 +326,48 @@ Transaction History for {days} days
         click.echo(
             "... {total} Transactions parsed in {time} seconds.\n".format(total=total,
                                                                           time=int(end_time - start_time)))
+    except AmazonOrdersAuthRedirectError:
+        _prompt_to_reauth_flow()
+    except AmazonOrdersError as e:
+        logger.debug("An error occurred.", exc_info=True)
+        ctx.fail(str(e))
+
+
+@amazon_orders_cli.command()
+@click.pass_context
+@click.option("--year", type=int,
+              help="The year for which to get digital Orders. Defaults to the current year.")
+@click.option("--all", "all_years", is_flag=True, default=False,
+              help="Walk the account's full digital Order history instead of a single year.")
+def digital_orders(ctx: Context, **kwargs: Any) -> None:
+    """
+    Get digital Amazon Order history (orders with D01- IDs, which do not appear
+    in the default Order history).
+    """
+    amazon_session = ctx.obj["amazon_session"]
+
+    try:
+        _authenticate(amazon_session)
+
+        config = ctx.obj["conf"]
+        amazon_digital_orders = AmazonDigitalOrders(amazon_session,
+                                                    config=config)
+
+        click.echo("Info: Fetching digital Order history, this might take a minute ...")
+
+        start_time = time.time()
+        if kwargs["all_years"]:
+            orders = amazon_digital_orders.get_all_digital_orders()
+        else:
+            orders = amazon_digital_orders.get_digital_orders(year=kwargs["year"])
+        end_time = time.time()
+
+        for o in orders:
+            click.echo(f"{_order_output(o, config)}\n")
+
+        click.echo(
+            "... {total} digital Orders parsed in {time} seconds.\n".format(total=len(orders),
+                                                                            time=int(end_time - start_time)))
     except AmazonOrdersAuthRedirectError:
         _prompt_to_reauth_flow()
     except AmazonOrdersError as e:
