@@ -34,7 +34,7 @@ and **"Total for this Order"** (vs "Grand Total"). Gifted digital orders render 
 | `digital-order-history-2024-10.html` | Page 2 (Next link present) |
 | `digital-order-history-2024-20.html` | Page 3 (9 orders, no Next link) |
 | `digital-order-details-D01-1000111-2000222.html` | Details: gift-card-paid order (subtotal, Tax Collected, negative Gift Card line, $0.00 total) — same order as the row in `digital-order-history-2026-0.html` |
-| `digital-order-details-D01-1003441-2006882.html` | Details: order with a Recipient section and card payment |
+| `digital-order-details-D01-1003441-2006882.html` | Details: order fully paid by rewards points (`Rewards Points` line → `Order.reward_points`, never `gift_card`), with a `Promotions` line and a Recipient section; card on file, $0.00 charged |
 | `digital-order-details-D01-1003552-2007104.html` | Details: free/promotional order with no payment section |
 
 Sanitization applied (DOM structure is byte-accurate to the captures):

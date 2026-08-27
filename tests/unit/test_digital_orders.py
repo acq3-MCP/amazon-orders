@@ -206,6 +206,34 @@ class TestDigitalOrders(UnitTestCase):
         self.assertEqual(1, details_resp.call_count)
 
     @responses.activate
+    def test_get_order_digital_details_rewards_points(self):
+        # GIVEN a digital order fully paid by rewards points (with a promotion applied)
+        self.amazon_session.is_authenticated = True
+        amazon_orders = AmazonOrders(self.amazon_session)
+        with open(os.path.join(self.RESOURCES_DIR, "digitalorders",
+                               "digital-order-details-D01-1003441-2006882.html"), "r",
+                  encoding="utf-8") as f:
+            resp = responses.add(
+                responses.GET,
+                f"{self.test_config.constants.ORDER_DETAILS_URL}",
+                body=f.read(),
+                status=200,
+            )
+
+        # WHEN
+        order = amazon_orders.get_order("D01-1003441-2006882")
+
+        # THEN the "Rewards Points" line lands in reward_points — never in gift_card
+        self.assertEqual(-1.45, order.reward_points)
+        self.assertIsNone(order.gift_card)
+        self.assertEqual(-8.22, order.promotion_applied)
+        self.assertEqual(9.58, order.subtotal)
+        self.assertEqual(1.36, order.total_before_tax)
+        self.assertEqual(0.10, order.estimated_tax)
+        self.assertEqual(0.0, order.grand_total)
+        self.assertEqual(1, resp.call_count)
+
+    @responses.activate
     def test_get_order_digital_details(self):
         # GIVEN a free/promotional digital order rendered with no payment section
         self.amazon_session.is_authenticated = True
