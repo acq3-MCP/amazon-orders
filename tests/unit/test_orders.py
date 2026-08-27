@@ -746,7 +746,7 @@ class TestOrders(UnitTestCase):
         # GIVEN ORDER_DETAILS_URL redirects to the dedicated FOPO details page, as Amazon does for
         # Whole Foods Market orders looked up directly (not via order history)
         self.amazon_session.is_authenticated = True
-        order_id = "147-7999693-6862434"
+        order_id = "113-0000002-0000002"
         fopo_url = "https://www.amazon.com/fopo/order-details/ref=ppx_yo2ov_dt_b_fed_order_details" \
                    f"?ie=UTF8&orderID={order_id}"
         resp1 = responses.add(
@@ -774,7 +774,7 @@ class TestOrders(UnitTestCase):
     def test_get_order_whole_foods_unparseable_details(self):
         # GIVEN the FOPO details page returns no parseable order-details container
         self.amazon_session.is_authenticated = True
-        order_id = "147-7999693-6862434"
+        order_id = "113-0000002-0000002"
         fopo_url = "https://www.amazon.com/fopo/order-details/ref=ppx_yo2ov_dt_b_fed_order_details" \
                    f"?ie=UTF8&orderID={order_id}"
         responses.add(
