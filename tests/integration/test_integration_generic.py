@@ -102,3 +102,49 @@ class TestIntegrationGeneric(IntegrationTestCase):
         self.assertIsNotNone(transaction.order_number)
         self.assertIsNotNone(transaction.order_details_link)
         self.assertIsNotNone(transaction.seller)
+
+    def test_get_gift_card_balance(self):
+        # WHEN
+        balance = self.amazon_gift_cards.get_balance()
+
+        # THEN
+        self.assertIsNotNone(balance)
+        self.assertGreaterEqual(balance, 0)
+
+    def test_get_gift_card_activity(self):
+        # WHEN
+        activity = self.amazon_gift_cards.get_gift_card_activity(days=self.transactions_days)
+
+        # THEN
+        self.assertIsNotNone(self.amazon_gift_cards.last_activity_pull)
+        self.assertGreaterEqual(self.amazon_gift_cards.last_activity_pull.pages_walked, 1)
+        if activity:
+            entry = activity[0]
+            self.assertIsNotNone(entry.activity_date)
+            self.assertIsNotNone(entry.description)
+            self.assertIsNotNone(entry.amount)
+            self.assertIsNotNone(entry.closing_balance)
+            # The ledger chain must hold exactly on live data
+            for newer, older in zip(activity, activity[1:]):
+                self.assertAlmostEqual(newer.closing_balance,
+                                       older.closing_balance + newer.amount,
+                                       places=2)
+
+    def test_get_digital_orders(self):
+        # WHEN
+        orders = self.amazon_digital_orders.get_digital_orders(year=self.year)
+
+        # THEN even a year with no digital Orders yields a well-formed pull
+        pull = self.amazon_digital_orders.last_digital_pull
+        self.assertIsNotNone(pull)
+        self.assertEqual(1, len(pull.windows))
+        self.assertGreaterEqual(pull.windows[0].pages_walked, 1)
+        # The page's own header count must reconcile with the rows parsed
+        self.assertIsNotNone(pull.windows[0].header_count)
+        self.assertEqual(pull.windows[0].header_count, pull.windows[0].rows_parsed)
+        self.assertEqual(len(orders), pull.windows[0].rows_parsed)
+        if orders:
+            order = orders[0]
+            self.assertTrue(str(order.order_number).startswith("D01-"))
+            self.assertIsNotNone(order.order_placed_date)
+            self.assertGreaterEqual(len(order.items), 1)

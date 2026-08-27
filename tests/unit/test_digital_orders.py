@@ -259,6 +259,60 @@ class TestDigitalOrders(UnitTestCase):
         self.assertIsNone(order.gift_card)
         self.assertEqual(1, resp.call_count)
 
+    def test_digital_details_payment_identity(self):
+        # THEN on every digital details fixture, the charged total reconciles with the payment
+        # components: grand_total == subtotal + promotion_applied + estimated_tax + reward_points
+        # + gift_card. Live pages satisfy this exactly; the fixtures' constant-factor amount
+        # scaling rounds each component independently, hence the one-cent tolerance here.
+        from bs4 import BeautifulSoup
+
+        from amazonorders import util
+
+        for html_file in ["digital-order-details-D01-1000111-2000222.html",
+                          "digital-order-details-D01-1003441-2006882.html",
+                          "digital-order-details-D01-1003552-2007104.html"]:
+            with open(os.path.join(self.RESOURCES_DIR, "digitalorders", html_file), "r",
+                      encoding="utf-8") as f:
+                parsed = BeautifulSoup(f.read(), self.test_config.bs4_parser)
+            details_tag = util.select_one(parsed, self.test_config.selectors.ORDER_DETAILS_ENTITY_SELECTOR)
+            order = self.test_config.order_cls(details_tag, self.test_config, full_details=True)
+
+            components = sum(value or 0 for value in [order.subtotal,
+                                                      order.promotion_applied,
+                                                      order.estimated_tax,
+                                                      order.reward_points,
+                                                      order.gift_card])
+            self.assertLessEqual(abs(order.grand_total - components), 0.02,
+                                 msg=f"{html_file}: {order.grand_total} vs components {components}")
+
+    def test_gift_card_ledger_reconciles_with_digital_order(self):
+        # THEN the cross-domain reconciliation the consumer relies on holds across fixtures:
+        # the gift card ledger's 2026-04-09 debit equals the same digital order's gift_card
+        # payment line (this debit renders anchor-less on some live pulls — the digital order
+        # is what attributes it)
+        from bs4 import BeautifulSoup
+
+        from amazonorders import util
+        from amazonorders.gift_cards import _parse_gift_card_activity_page
+
+        with open(os.path.join(self.RESOURCES_DIR, "giftcards", "gift-card-balance-activity.html"), "r",
+                  encoding="utf-8") as f:
+            gc_parsed = BeautifulSoup(f.read(), self.test_config.bs4_parser)
+        _, activity, _ = _parse_gift_card_activity_page(gc_parsed, self.test_config)
+        debit = next(entry for entry in activity
+                     if entry.activity_date == datetime.date(2026, 4, 9) and not entry.is_credit)
+
+        with open(os.path.join(self.RESOURCES_DIR, "digitalorders",
+                               "digital-order-details-D01-1000111-2000222.html"), "r",
+                  encoding="utf-8") as f:
+            details_parsed = BeautifulSoup(f.read(), self.test_config.bs4_parser)
+        details_tag = util.select_one(details_parsed, self.test_config.selectors.ORDER_DETAILS_ENTITY_SELECTOR)
+        order = self.test_config.order_cls(details_tag, self.test_config, full_details=True)
+
+        self.assertEqual("D01-1000111-2000222", order.order_number)
+        self.assertEqual(debit.activity_date, order.order_placed_date)
+        self.assertEqual(debit.amount, order.gift_card)
+
     @responses.activate
     def test_get_all_digital_orders_no_time_filters(self):
         # GIVEN a page that renders without the time filter dropdown
