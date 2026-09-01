@@ -1249,3 +1249,21 @@ class TestOrders(UnitTestCase):
         # THEN - the rows parsed before the failure ride along in the exception meta
         self.assertEqual(3, len(cm.exception.meta["partial_orders"]))
         self.assertEqual([0, 1, 2], [order.index for order in cm.exception.meta["partial_orders"]])
+
+    def test_parse_order_history_page_csd_encrypted(self):
+        # GIVEN - a browser-fetched digital history page whose order cards Amazon served as an
+        # encrypted client-side-decryption payload: card shells match the entity selector, but
+        # their content is unreadable; the time-filter label (and so header_count) still renders
+        with open(os.path.join(self.RESOURCES_DIR, "digitalorders",
+                               "digital-order-history-csd-encrypted.html"), "r",
+                  encoding="utf-8") as f:
+            html = f.read()
+
+        # WHEN
+        result = AmazonOrders.parse_order_history_page(html, self.test_config)
+
+        # THEN - classified, not raised mid-entity
+        self.assertEqual("csd_encrypted", result.page_type)
+        self.assertEqual(0, len(result.orders))
+        self.assertEqual(1, result.header_count)
+        self.assertIsNone(result.next_page_url)
