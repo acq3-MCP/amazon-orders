@@ -320,3 +320,26 @@ class TestTransactions(UnitTestCase):
                 'ppw-widgetEvent:DefaultNextPageNavigationEvent:{"nextPageKey":"key"}': "",
             },
         )
+
+    def test_parse_transactions(self):
+        # GIVEN
+        with open(os.path.join(self.RESOURCES_DIR, "transactions", "get-transactions-snippet.html"), "r",
+                  encoding="utf-8") as f:
+            html = f.read()
+
+        # WHEN - no session, no network
+        transactions = AmazonTransactions.parse_transactions(html, self.test_config)
+
+        # THEN
+        self.assertEqual(2, len(transactions))
+        self.assertEqual(-45.19, transactions[0].grand_total)
+        self.assertEqual("123-4567890-1234567", transactions[0].order_number)
+
+    def test_parse_transactions_unrecognized_page(self):
+        # GIVEN
+        with open(os.path.join(self.RESOURCES_DIR, "500.html"), "r", encoding="utf-8") as f:
+            html = f.read()
+
+        # WHEN/THEN
+        with self.assertRaises(AmazonOrdersError):
+            AmazonTransactions.parse_transactions(html, self.test_config)
