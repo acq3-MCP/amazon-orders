@@ -9,7 +9,7 @@ import re
 from typing import Any, Callable, List, Optional
 from urllib.parse import quote
 
-from bs4 import Tag
+from bs4 import BeautifulSoup, Tag
 
 from amazonorders import util
 from amazonorders.conf import AmazonOrdersConfig
@@ -52,6 +52,37 @@ class OrderHistoryPullResult:
         return f"{self.pages_walked} pages, {self.rows_parsed} rows, {self.stop_reason}"
 
 
+class OrderHistoryPageResult:
+    """
+    The parsed contents of a single Order history page, as returned by
+    :func:`~amazonorders.orders.AmazonOrders.parse_order_history_page`.
+    """
+
+    def __init__(self,
+                 orders: List[Order],
+                 header_count: Optional[int],
+                 next_page_url: Optional[str],
+                 page_type: str) -> None:
+        #: The Orders on this page.
+        self.orders: List[Order] = orders
+        #: The Order count the page's own header reports for the window ("N orders placed in …"),
+        #: or ``None`` if the header could not be parsed.
+        self.header_count: Optional[int] = header_count
+        #: The absolute URL of the next history page, or ``None`` on the final page.
+        self.next_page_url: Optional[str] = next_page_url
+        #: What the page is: ``orders`` (Order rows were parsed), ``empty_window`` (the page's own
+        #: count confirms there are no Orders at this index), or ``not_order_history`` (a sign-in,
+        #: Captcha, or challenge page — the supplied HTML is not an Order history page at all).
+        self.page_type: str = page_type
+
+    def __repr__(self) -> str:
+        return (f"<OrderHistoryPageResult: \"{self.page_type}\", {len(self.orders)} rows, "
+                f"header {self.header_count}>")
+
+    def __str__(self) -> str:  # pragma: no cover
+        return f"{self.page_type}: {len(self.orders)} rows, header {self.header_count}"
+
+
 class AmazonOrders:
     """
     Using an authenticated :class:`~amazonorders.session.AmazonSession`, can be used to query Amazon
@@ -82,6 +113,134 @@ class AmazonOrders:
         #: first pull, and reset to ``None`` at the start of each pull (so it stays ``None`` if
         #: the pull raises).
         self.last_history_pull: Optional[OrderHistoryPullResult] = None
+
+    @staticmethod
+    def _parse_header_count(parsed: Tag,
+                            config: AmazonOrdersConfig) -> Optional[int]:
+        # Parse just the leading number so the count survives thousands separators
+        # (e.g. "1,213 orders") and any trailing copy in the label
+        order_count_tag = util.select_one(parsed, config.selectors.ORDER_HISTORY_COUNT_SELECTOR)
+        if not order_count_tag:
+            return None
+        count_match = re.match(r"\s*([\d,]+)", order_count_tag.text)
+        if not count_match:
+            return None
+        return int(count_match.group(1).replace(",", ""))
+
+    @staticmethod
+    def _parse_next_page_url(parsed: Tag,
+                             config: AmazonOrdersConfig) -> Optional[str]:
+        next_page_tag = util.select_one(parsed, config.selectors.NEXT_PAGE_LINK_SELECTOR)
+        if not next_page_tag:
+            return None
+        next_page = str(next_page_tag["href"])
+        if not next_page.startswith("http"):
+            next_page = f"{config.constants.BASE_URL}{next_page}"
+        return next_page
+
+    @staticmethod
+    def parse_order_history(html: str,
+                            config: AmazonOrdersConfig) -> List[Order]:
+        """
+        Parse an already-fetched Amazon Order history page into Orders, without a session driving the
+        fetch — useful for parsing HTML obtained elsewhere (a browser, a proxy, a fixture) and for
+        network-free testing.
+
+        Only the Orders on the given page are returned, with no classification of the page itself —
+        a page with no Order rows parses to an empty list whatever the reason. Use
+        :func:`parse_order_history_page` when the page's header count, next-page URL, or a
+        distinction between an empty window and a non-history page is needed.
+
+        :param html: The Order history page HTML to parse.
+        :param config: The config providing the selectors and entity classes used for parsing.
+        :return: A list of the parsed Orders.
+        """
+        parsed = BeautifulSoup(html, config.bs4_parser)
+        order_tags = util.select(parsed, config.selectors.ORDER_HISTORY_ENTITY_SELECTOR)
+        return [config.order_cls(tag, config, index=i) for i, tag in enumerate(order_tags)]
+
+    @staticmethod
+    def parse_order_details(html: str,
+                            config: AmazonOrdersConfig) -> Order:
+        """
+        Parse an already-fetched Amazon Order details page into an Order, without a session driving the
+        fetch — useful for parsing HTML obtained elsewhere and for network-free testing. Digital
+        (``D01-``) Order details pages parse the same way — their row-label differences are handled
+        by the :class:`~amazonorders.entity.order.Order` entity itself.
+
+        :param html: The Order details page HTML to parse.
+        :param config: The config providing the selectors and entity classes used for parsing.
+        :return: The parsed Order.
+        """
+        parsed = BeautifulSoup(html, config.bs4_parser)
+        order_details_tag = util.select_one(parsed, config.selectors.ORDER_DETAILS_ENTITY_SELECTOR)
+        if not order_details_tag:
+            raise AmazonOrdersError("Could not parse Order details. Check if Amazon changed the HTML.")
+        return config.order_cls(order_details_tag, config, full_details=True)
+
+    @staticmethod
+    def parse_order_history_page(html: str,
+                                 config: AmazonOrdersConfig,
+                                 start_index: int = 0) -> "OrderHistoryPageResult":
+        """
+        Parse a single already-fetched Amazon Order history page — including a digital Order history
+        page (``orderFilter=digital``), which shares the same markup — into its Orders and page
+        metadata, without a session driving the fetch.
+
+        The result's :attr:`~amazonorders.orders.OrderHistoryPageResult.page_type` distinguishes a
+        genuinely empty window (the page's own header count confirms there are no Orders at
+        ``start_index``) from a page that is not Order history at all (sign-in, Captcha, or
+        challenge pages). A page with no Order rows whose count does *not* confirm the window is
+        spent raises, since that is a page that failed to render rather than an empty window.
+
+        If a row fails to parse, the raised exception's
+        :attr:`~amazonorders.exception.AmazonOrdersError.meta` carries ``partial_orders`` (the
+        Orders parsed before the failure), mirroring the resume metadata on the fetching walks.
+
+        :param html: The Order history page HTML to parse.
+        :param config: The config providing the selectors and entity classes used for parsing.
+        :param start_index: The index of the first Order on this page within its window, used both
+            to populate :attr:`~amazonorders.entity.order.Order.index` and in the empty-window
+            check against the header count.
+        :return: The parsed page.
+        """
+        parsed = BeautifulSoup(html, config.bs4_parser)
+
+        header_count = AmazonOrders._parse_header_count(parsed, config)
+        order_tags = util.select(parsed, config.selectors.ORDER_HISTORY_ENTITY_SELECTOR)
+
+        if not order_tags:
+            if header_count is not None and header_count <= start_index:
+                return OrderHistoryPageResult(orders=[],
+                                              header_count=header_count,
+                                              next_page_url=None,
+                                              page_type="empty_window")
+
+            not_order_history_selectors = [config.selectors.SIGN_IN_FORM_SELECTOR,
+                                           config.selectors.CAPTCHA_1_FORM_SELECTOR,
+                                           config.selectors.ACIC_CHALLENGE_SELECTOR,
+                                           config.selectors.AWS_WAF_CHALLENGE_SCRIPT_SELECTOR] + \
+                list(config.selectors.CAPTCHA_2_FORM_SELECTOR)
+            if util.select_one(parsed, not_order_history_selectors):
+                return OrderHistoryPageResult(orders=[],
+                                              header_count=header_count,
+                                              next_page_url=None,
+                                              page_type="not_order_history")
+
+            raise AmazonOrdersError("Could not parse Order history. Check if Amazon changed the HTML.")
+
+        orders: List[Order] = []
+        for i, order_tag in enumerate(order_tags):
+            try:
+                orders.append(config.order_cls(order_tag, config, index=start_index + i))
+            except AmazonOrdersError as e:
+                e.meta = {**{"partial_orders": orders}, **(e.meta or {})}
+                raise
+
+        return OrderHistoryPageResult(orders=orders,
+                                      header_count=header_count,
+                                      next_page_url=AmazonOrders._parse_next_page_url(parsed, config),
+                                      page_type="orders")
 
     def get_order(self,
                   order_id: str,
@@ -227,20 +386,15 @@ class AmazonOrders:
 
             pages_walked += 1
 
-            order_count_tag = util.select_one(page_response.parsed,
-                                              self.config.selectors.ORDER_HISTORY_COUNT_SELECTOR)
-            if pages_walked == 1 and order_count_tag:
-                header_count_match = re.match(r"\s*([\d,]+)", order_count_tag.text)
-                if header_count_match:
-                    header_count = int(header_count_match.group(1).replace(",", ""))
+            page_count = self._parse_header_count(page_response.parsed, self.config)
+            if pages_walked == 1:
+                header_count = page_count
 
             order_tags = util.select(page_response.parsed,
                                      self.config.selectors.ORDER_HISTORY_ENTITY_SELECTOR)
 
             if not order_tags:
-                count_match = re.match(r"\s*([\d,]+)", order_count_tag.text) if order_count_tag else None
-
-                if count_match and int(count_match.group(1).replace(",", "")) <= current_index:
+                if page_count is not None and page_count <= current_index:
                     stop_reason = "empty_history"
                     break
                 else:
@@ -253,13 +407,8 @@ class AmazonOrders:
 
             next_page = None
             if keep_paging:
-                next_page_tag = util.select_one(page_response.parsed,
-                                                self.config.selectors.NEXT_PAGE_LINK_SELECTOR)
-                if next_page_tag:
-                    next_page = str(next_page_tag["href"])
-                    if not next_page.startswith("http"):
-                        next_page = f"{self.config.constants.BASE_URL}{next_page}"
-                else:
+                next_page = self._parse_next_page_url(page_response.parsed, self.config)
+                if not next_page:
                     stop_reason = "no_more_pages"
                     logger.debug("No next page")
             else:

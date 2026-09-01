@@ -1097,3 +1097,155 @@ class TestOrders(UnitTestCase):
         self.assertIn(f"timeFilter=year-{year}", request_url)
         self.assertIn("orderFilter=digital-orders", request_url)
         self.assertEqual(10, len(orders))
+
+    def test_parse_order_history(self):
+        # GIVEN
+        with open(os.path.join(self.RESOURCES_DIR, "orders", "order-history-2018-0.html"), "r",
+                  encoding="utf-8") as f:
+            html = f.read()
+
+        # WHEN - no session, no network
+        orders = AmazonOrders.parse_order_history(html, self.test_config)
+
+        # THEN
+        self.assertEqual(10, len(orders))
+        self.assert_order_112_0399923_3070642(orders[3], False)
+        self.assertEqual(3, orders[3].index)
+        self.assert_orders_list_index(orders)
+
+    def test_parse_order_details(self):
+        # GIVEN
+        with open(os.path.join(self.RESOURCES_DIR, "orders", "order-details-112-9685975-5907428.html"), "r",
+                  encoding="utf-8") as f:
+            html = f.read()
+
+        # WHEN - no session, no network
+        order = AmazonOrders.parse_order_details(html, self.test_config)
+
+        # THEN
+        self.assert_order_112_9685975_5907428_multiple_items_shipments_sellers(order, True)
+
+    def test_parse_order_details_digital(self):
+        # GIVEN - a digital (D01-) details page; its row-label differences are handled by the
+        # Order entity, so the generic details parse covers it
+        with open(os.path.join(self.RESOURCES_DIR, "digitalorders",
+                               "digital-order-details-D01-1000111-2000222.html"), "r",
+                  encoding="utf-8") as f:
+            html = f.read()
+
+        # WHEN - no session, no network
+        order = AmazonOrders.parse_order_details(html, self.test_config)
+
+        # THEN
+        self.assertEqual("D01-1000111-2000222", order.order_number)
+        self.assertEqual(0.0, order.grand_total)
+        self.assertEqual(2.73, order.subtotal)
+        self.assertEqual(0.18, order.estimated_tax)
+        self.assertEqual(-2.9, order.gift_card)
+
+    def test_parse_order_details_unrecognized_page(self):
+        # GIVEN
+        with open(os.path.join(self.RESOURCES_DIR, "500.html"), "r", encoding="utf-8") as f:
+            html = f.read()
+
+        # WHEN/THEN
+        with self.assertRaises(AmazonOrdersError):
+            AmazonOrders.parse_order_details(html, self.test_config)
+
+    def test_parse_order_history_page(self):
+        # GIVEN
+        with open(os.path.join(self.RESOURCES_DIR, "digitalorders", "digital-order-history-2024-0.html"), "r",
+                  encoding="utf-8") as f:
+            html = f.read()
+
+        # WHEN - no session, no network
+        result = AmazonOrders.parse_order_history_page(html, self.test_config)
+
+        # THEN
+        self.assertEqual("orders", result.page_type)
+        self.assertEqual(10, len(result.orders))
+        self.assertEqual(29, result.header_count)
+        self.assertIn("orderFilter=digital", result.next_page_url)
+        self.assertIn("timeFilter=year-2024", result.next_page_url)
+        self.assertTrue(result.next_page_url.startswith("http"))
+        self.assert_orders_list_index(result.orders)
+
+    def test_parse_order_history_page_start_index(self):
+        # GIVEN
+        with open(os.path.join(self.RESOURCES_DIR, "digitalorders", "digital-order-history-2024-10.html"), "r",
+                  encoding="utf-8") as f:
+            html = f.read()
+
+        # WHEN
+        result = AmazonOrders.parse_order_history_page(html, self.test_config, start_index=10)
+
+        # THEN - Order.index continues the window's numbering
+        self.assertEqual("orders", result.page_type)
+        self.assertEqual(10, len(result.orders))
+        self.assertEqual(10, result.orders[0].index)
+        self.assertEqual(19, result.orders[-1].index)
+        self.assertEqual(29, result.header_count)
+
+    def test_parse_order_history_page_empty_window(self):
+        # GIVEN - a real empty window: no Order rows, and the page's own count confirms it
+        with open(os.path.join(self.RESOURCES_DIR, "digitalorders", "digital-order-history-2005-0.html"), "r",
+                  encoding="utf-8") as f:
+            html = f.read()
+
+        # WHEN
+        result = AmazonOrders.parse_order_history_page(html, self.test_config)
+
+        # THEN - distinguishable from a page that is not Order history at all
+        self.assertEqual("empty_window", result.page_type)
+        self.assertEqual(0, len(result.orders))
+        self.assertEqual(0, result.header_count)
+        self.assertIsNone(result.next_page_url)
+
+    def test_parse_order_history_page_not_order_history(self):
+        # GIVEN - a sign-in page, as a session-expired browser fetch would supply
+        with open(os.path.join(self.RESOURCES_DIR, "auth", "signin.html"), "r", encoding="utf-8") as f:
+            html = f.read()
+
+        # WHEN
+        result = AmazonOrders.parse_order_history_page(html, self.test_config)
+
+        # THEN
+        self.assertEqual("not_order_history", result.page_type)
+        self.assertEqual(0, len(result.orders))
+        self.assertIsNone(result.header_count)
+
+    def test_parse_order_history_page_unrecognized_page(self):
+        # GIVEN - a page that is neither Order history, a confirmed-empty window, nor a
+        # recognizable auth page: a failed render, which must not report as an empty window
+        with open(os.path.join(self.RESOURCES_DIR, "500.html"), "r", encoding="utf-8") as f:
+            html = f.read()
+
+        # WHEN/THEN
+        with self.assertRaises(AmazonOrdersError):
+            AmazonOrders.parse_order_history_page(html, self.test_config)
+
+    def test_parse_order_history_page_partial_orders_meta(self):
+        # GIVEN - an entity class that fails on the fourth row, like a mid-page markup change would
+        with open(os.path.join(self.RESOURCES_DIR, "digitalorders", "digital-order-history-2024-0.html"), "r",
+                  encoding="utf-8") as f:
+            html = f.read()
+
+        original_order_cls = self.test_config.order_cls
+
+        class FailingOrder(original_order_cls):  # type: ignore[valid-type,misc]
+            def __init__(self, parsed, config, **kwargs):
+                if kwargs.get("index") == 3:
+                    raise AmazonOrdersError("Simulated row parse failure.")
+                super().__init__(parsed, config, **kwargs)
+
+        self.test_config.order_cls = FailingOrder
+        try:
+            # WHEN
+            with self.assertRaises(AmazonOrdersError) as cm:
+                AmazonOrders.parse_order_history_page(html, self.test_config)
+        finally:
+            self.test_config.order_cls = original_order_cls
+
+        # THEN - the rows parsed before the failure ride along in the exception meta
+        self.assertEqual(3, len(cm.exception.meta["partial_orders"]))
+        self.assertEqual([0, 1, 2], [order.index for order in cm.exception.meta["partial_orders"]])
