@@ -36,6 +36,7 @@ and **"Total for this Order"** (vs "Grand Total"). Gifted digital orders render 
 | `digital-order-details-D01-1000111-2000222.html` | Details: gift-card-paid order (subtotal, Tax Collected, negative Gift Card line, $0.00 total) — same order as the row in `digital-order-history-2026-0.html` |
 | `digital-order-details-D01-1003441-2006882.html` | Details: order fully paid by rewards points (`Rewards Points` line → `Order.reward_points`, never `gift_card`), with a `Promotions` line and a Recipient section; card on file, $0.00 charged |
 | `digital-order-details-D01-1003552-2007104.html` | Details: free/promotional order with no payment section |
+| `digital-order-history-csd-encrypted.html` | History page whose card content Amazon served as an encrypted client-side-decryption payload (observed on browser-fetched digital history). **Trimmed**, unlike the byte-accurate captures above: reduced to the time-filter form plus one encrypted card shell; the encrypted script payload is replaced with a short dummy of the same JSON shape, and the card's order ID (leaked only via a `csa-c-slot-id` attribute) is remapped |
 
 Sanitization applied (DOM structure is byte-accurate to the captures):
 

@@ -88,6 +88,10 @@ class Selectors:
                                     # The Digital Orders tab renders the count in the time-filter form label
                                     "form.js-time-filter-form label b"]
     ORDER_HISTORY_TIME_FILTER_OPTIONS_SELECTOR = "form.js-time-filter-form select[name='timeFilter'] option"
+    # Amazon serves some fetches (observed on browser-fetched digital history) with the order cards'
+    # content replaced by an encrypted client-side-decryption payload; the shell carries a noscript
+    # fallback redirect naming disableCsd, which is the crispest server-absent marker
+    ORDER_HISTORY_CSD_ENCRYPTED_SELECTOR = "noscript meta[content*='disableCsd']"
     ORDER_DETAILS_ENTITY_SELECTOR = ["div#orderDetails",
                                      "div#ordersContainer",
                                      "div#odp-main-section"]

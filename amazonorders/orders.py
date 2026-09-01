@@ -71,8 +71,11 @@ class OrderHistoryPageResult:
         #: The absolute URL of the next history page, or ``None`` on the final page.
         self.next_page_url: Optional[str] = next_page_url
         #: What the page is: ``orders`` (Order rows were parsed), ``empty_window`` (the page's own
-        #: count confirms there are no Orders at this index), or ``not_order_history`` (a sign-in,
-        #: Captcha, or challenge page — the supplied HTML is not an Order history page at all).
+        #: count confirms there are no Orders at this index), ``not_order_history`` (a sign-in,
+        #: Captcha, or challenge page — the supplied HTML is not an Order history page at all), or
+        #: ``csd_encrypted`` (an Order history page whose card content Amazon served as an encrypted
+        #: client-side-decryption payload — observed on browser-fetched digital history; the rows are
+        #: unreadable, though :attr:`header_count` often still parses from the time-filter label).
         self.page_type: str = page_type
 
     def __repr__(self) -> str:
@@ -190,8 +193,11 @@ class AmazonOrders:
         The result's :attr:`~amazonorders.orders.OrderHistoryPageResult.page_type` distinguishes a
         genuinely empty window (the page's own header count confirms there are no Orders at
         ``start_index``) from a page that is not Order history at all (sign-in, Captcha, or
-        challenge pages). A page with no Order rows whose count does *not* confirm the window is
-        spent raises, since that is a page that failed to render rather than an empty window.
+        challenge pages), and from a ``csd_encrypted`` page — one whose Order cards Amazon served
+        as an encrypted client-side-decryption payload rather than readable markup (observed on
+        browser-fetched digital history; such pages carry a ``disableCsd`` noscript fallback). A
+        page with no Order rows whose count does *not* confirm the window is spent raises, since
+        that is a page that failed to render rather than an empty window.
 
         If a row fails to parse, the raised exception's
         :attr:`~amazonorders.exception.AmazonOrdersError.meta` carries ``partial_orders`` (the
@@ -207,6 +213,14 @@ class AmazonOrders:
         parsed = BeautifulSoup(html, config.bs4_parser)
 
         header_count = AmazonOrders._parse_header_count(parsed, config)
+
+        # An encrypted page still renders card shells, so this must be checked before row parsing
+        if util.select_one(parsed, config.selectors.ORDER_HISTORY_CSD_ENCRYPTED_SELECTOR):
+            return OrderHistoryPageResult(orders=[],
+                                          header_count=header_count,
+                                          next_page_url=None,
+                                          page_type="csd_encrypted")
+
         order_tags = util.select(parsed, config.selectors.ORDER_HISTORY_ENTITY_SELECTOR)
 
         if not order_tags:
