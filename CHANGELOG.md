@@ -4,13 +4,12 @@ All notable changes to this project will be documented in this file.
 
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased](https://github.com/alexdlaird/amazon-orders/compare/4.4.7...HEAD)
+## [Unreleased](https://github.com/alexdlaird/amazon-orders/compare/4.5.0...HEAD)
 
 ### Added
 
-- Parse-from-string API, for parsing HTML obtained without the library's own session (a browser, a proxy, a fixture): `AmazonOrders.parse_order_history()`, `AmazonOrders.parse_order_details()` (digital `D01-` details pages included), and `AmazonTransactions.parse_transactions()` — shaped to match upstream PR alexdlaird/amazon-orders#93 — plus `AmazonOrders.parse_order_history_page()`, returning an `OrderHistoryPageResult` with the page's Orders, `header_count`, `next_page_url`, and a `page_type` distinguishing a confirmed-empty window from a sign-in/challenge page. Row-level failures carry `partial_orders` in the exception `meta`. The fetching walk and the string parse share the same per-page parsing internals.
+- `AmazonOrders.parse_order_history_page()`, returning an `OrderHistoryPageResult` with the page's Orders, `header_count`, `next_page_url`, and a `page_type` distinguishing a confirmed-empty window from a sign-in/challenge page. Row-level failures carry `partial_orders` in the exception `meta`. The fetching walk shares the same per-page helpers.
 - `parse_order_history_page()` now classifies CSD-encrypted pages as `page_type="csd_encrypted"` instead of raising mid-row: some fetches (observed on browser-fetched digital history) render the order cards as encrypted client-side-decryption shells, detected via their `disableCsd` noscript fallback. `header_count` still populates when the time-filter label renders.
-
 - `AmazonGiftCards` with `get_balance()` and `get_gift_card_activity()` for read-only access to the Gift Card balance page (`/gc/balance`), and the `GiftCardActivity` entity (date, description, signed amount, closing balance, and Order references). Parsing is validated against sanitized captures of the live page.
 - `gift-card-balance` and `gift-card-activity` CLI commands.
 - `AmazonGiftCards.last_activity_pull` (a `GiftCardActivityPullResult` with `pages_walked`, `rows_parsed`, and `stop_reason`) for per-pull observability.
@@ -18,20 +17,32 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Documented (and covered with a test) that `GiftCardActivity.order_number` can be `None` on applied-to-order debit rows rendered without an Order anchor.
 - `AmazonDigitalOrders` (`amazonorders/digital_orders.py`) with `get_digital_orders()` (one time window) and `get_all_digital_orders()` (full-history walk enumerating the page's own year dropdown) for the Digital Orders tab (`orderFilter=digital`, orders with `D01-` IDs, absent from the default history). Rows parse with the standard `Order` entity. Per-pull observability via `last_digital_pull`; mid-walk failures carry `partial_orders` and the failed `window` in the exception `meta`.
 - `AmazonOrders.last_history_pull` (an `OrderHistoryPullResult` with `pages_walked`, `rows_parsed`, `header_count`, and `stop_reason`) for order history pull observability.
-- `ORDER_HISTORY_COUNT_SELECTOR` now also matches the Digital Orders tab's count header, fixing a parse error on empty digital history windows.
 - `digital-orders` CLI command.
-- Digital order details pages now parse with `get_order("D01-…")` / `full_details=True`: `Order.grand_total` ("Total for this Order"), `Order.estimated_tax` ("Tax Collected"), and `Order.gift_card` ("Gift Card") gain fallbacks for the digital details page's row labels.
 
 ### Fixed
 
 - `GiftCardActivity.order_number` now resolves digital (`D01-…`) Order IDs — ledger rows anchored to digital orders previously lost their Order reference entirely.
 - Row-level parse failures during `get_gift_card_activity()` pagination now carry the documented resume metadata (`next_page_url`, `partial_activity`) instead of raising without `meta`.
 - `AmazonOrders.last_history_pull` is no longer populated when a `full_details` pull fails mid-fetch, honoring its stays-`None`-on-failure contract.
-- The empty-history detection in `get_order_history()` parses the count header robustly (comma-grouped counts, arbitrary label text) instead of a fragile split that could escape as a bare `ValueError`.
 - `digital-orders --year --all` now fails explicitly instead of silently ignoring `--year`.
 - `get_gift_card_activity()` logs a warning when activity dates fail to parse (the `days` window cannot apply to such rows), instead of silently walking the full ledger.
 - `Parsable.to_currency()` is now a static method (it never used instance state), usable without constructing an entity.
 
+## [4.5.0](https://github.com/alexdlaird/amazon-orders/compare/4.4.7...4.5.0) - 2026-09-02
+
+### Added
+
+- `AmazonOrders.parse_order_history()`, `AmazonOrders.parse_order_details()`, and `AmazonTransactions.parse_transactions()`, which parse already-fetched page HTML without a session.
+
+### Changed
+
+- **Breaking:** `Order.payment_method_last_4` is now a `str` rather than an `int`, preserving leading zeros and matching `Transaction.payment_method_last_4`. Numeric comparisons must become string comparisons (`== "1234"`).
+
+### Fixed
+
+- `Shipment.items` and `Order.items` from the Order history page no longer omit Items when a Shipment holds more than one.
+- `get_order()` now parses the charge summary on digital (`D01-`) order details pages.
+- `get_order_history()` no longer raises on empty Order history pages (a digital window with no Orders, or a `start_index` past the end), or on Order counts containing a thousands separator.
 
 ## [4.4.7](https://github.com/alexdlaird/amazon-orders/compare/4.4.6...4.4.7) - 2026-08-02
 

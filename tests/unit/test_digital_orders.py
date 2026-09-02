@@ -200,7 +200,7 @@ class TestDigitalOrders(UnitTestCase):
         self.assertEqual(0.18, order.estimated_tax)
         self.assertEqual(-2.90, order.gift_card)
         self.assertEqual("Amazon Visa", order.payment_method)
-        self.assertEqual(1111, order.payment_method_last_4)
+        self.assertEqual("1111", order.payment_method_last_4)
         self.assertEqual("Digital Item 01", order.items[0].title)
         self.assertEqual(1, history_resp.call_count)
         self.assertEqual(1, details_resp.call_count)
