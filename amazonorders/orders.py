@@ -20,6 +20,22 @@ from amazonorders.session import AmazonSession
 logger = logging.getLogger(__name__)
 
 
+def _parse_order_count(order_count_tag: Optional[Tag]) -> Optional[int]:
+    """
+    Parse the leading number out of an Order history count tag, so the count survives thousands
+    separators (e.g. ``1,213 orders``) and any trailing copy.
+
+    :param order_count_tag: The Order history count tag, if one was found.
+    :return: The Order count, or ``None`` if it was absent or unparsable.
+    """
+    if not order_count_tag:
+        return None
+
+    match = re.match(r"\s*([\d,]+)", order_count_tag.text)
+
+    return int(match.group(1).replace(",", "")) if match else None
+
+
 class OrderHistoryPullResult:
     """
     Metadata about the most recent successful call to
@@ -72,9 +88,9 @@ class OrderHistoryPageResult:
         self.next_page_url: Optional[str] = next_page_url
         #: What the page is: ``orders`` (Order rows were parsed), ``empty_window`` (the page's own
         #: count confirms there are no Orders at this index), ``not_order_history`` (a sign-in,
-        #: Captcha, or challenge page — the supplied HTML is not an Order history page at all), or
+        #: Captcha, or challenge page; the supplied HTML is not an Order history page at all), or
         #: ``csd_encrypted`` (an Order history page whose card content Amazon served as an encrypted
-        #: client-side-decryption payload — observed on browser-fetched digital history; the rows are
+        #: client-side-decryption payload, observed on browser-fetched digital history; the rows are
         #: unreadable, though :attr:`header_count` often still parses from the time-filter label).
         self.page_type: str = page_type
 
@@ -118,19 +134,6 @@ class AmazonOrders:
         self.last_history_pull: Optional[OrderHistoryPullResult] = None
 
     @staticmethod
-    def _parse_header_count(parsed: Tag,
-                            config: AmazonOrdersConfig) -> Optional[int]:
-        # Parse just the leading number so the count survives thousands separators
-        # (e.g. "1,213 orders") and any trailing copy in the label
-        order_count_tag = util.select_one(parsed, config.selectors.ORDER_HISTORY_COUNT_SELECTOR)
-        if not order_count_tag:
-            return None
-        count_match = re.match(r"\s*([\d,]+)", order_count_tag.text)
-        if not count_match:
-            return None
-        return int(count_match.group(1).replace(",", ""))
-
-    @staticmethod
     def _parse_next_page_url(parsed: Tag,
                              config: AmazonOrdersConfig) -> Optional[str]:
         next_page_tag = util.select_one(parsed, config.selectors.NEXT_PAGE_LINK_SELECTOR)
@@ -143,57 +146,70 @@ class AmazonOrders:
 
     @staticmethod
     def parse_order_history(html: str,
-                            config: AmazonOrdersConfig) -> List[Order]:
+                            config: AmazonOrdersConfig,
+                            start_index: int = 0) -> List[Order]:
         """
         Parse an already-fetched Amazon Order history page into Orders, without a session driving the
-        fetch — useful for parsing HTML obtained elsewhere (a browser, a proxy, a fixture) and for
+        fetch. Useful for parsing HTML obtained elsewhere (a browser, a proxy, a fixture) and for
         network-free testing.
 
-        Only the Orders on the given page are returned, with no classification of the page itself —
-        a page with no Order rows parses to an empty list whatever the reason. Use
-        :func:`parse_order_history_page` when the page's header count, next-page URL, or a
-        distinction between an empty window and a non-history page is needed.
+        A page with no Orders is returned as an empty list only when the page's own Order count
+        confirms the window is empty at ``start_index``; otherwise it raises, since that is a page
+        that failed to render.
 
         :param html: The Order history page HTML to parse.
         :param config: The config providing the selectors and entity classes used for parsing.
+        :param start_index: The index of the first Order on the page within its window, seeding
+            :attr:`~amazonorders.entity.order.Order.index` the way ``get_order_history()`` does.
         :return: A list of the parsed Orders.
         """
         parsed = BeautifulSoup(html, config.bs4_parser)
         order_tags = util.select(parsed, config.selectors.ORDER_HISTORY_ENTITY_SELECTOR)
-        return [config.order_cls(tag, config, index=i) for i, tag in enumerate(order_tags)]
+
+        if not order_tags:
+            order_count = _parse_order_count(
+                util.select_one(parsed, config.selectors.ORDER_HISTORY_COUNT_SELECTOR))
+
+            if order_count is not None and order_count <= start_index:
+                return []
+            else:
+                raise AmazonOrdersError("Could not parse Order history. Check if Amazon changed the HTML.")
+
+        return [config.order_cls(tag, config, index=start_index + i) for i, tag in enumerate(order_tags)]
 
     @staticmethod
     def parse_order_details(html: str,
-                            config: AmazonOrdersConfig) -> Order:
+                            config: AmazonOrdersConfig,
+                            order_number: Optional[str] = None) -> Order:
         """
         Parse an already-fetched Amazon Order details page into an Order, without a session driving the
-        fetch — useful for parsing HTML obtained elsewhere and for network-free testing. Digital
-        (``D01-``) Order details pages parse the same way — their row-label differences are handled
-        by the :class:`~amazonorders.entity.order.Order` entity itself.
+        fetch. Useful for parsing HTML obtained elsewhere and for network-free testing.
 
         :param html: The Order details page HTML to parse.
         :param config: The config providing the selectors and entity classes used for parsing.
+        :param order_number: The Order ID the page was fetched for, used as a fallback for
+            :attr:`~amazonorders.entity.order.Order.order_number` when it cannot be parsed from the page.
         :return: The parsed Order.
         """
         parsed = BeautifulSoup(html, config.bs4_parser)
         order_details_tag = util.select_one(parsed, config.selectors.ORDER_DETAILS_ENTITY_SELECTOR)
         if not order_details_tag:
             raise AmazonOrdersError("Could not parse Order details. Check if Amazon changed the HTML.")
-        return config.order_cls(order_details_tag, config, full_details=True)
+        return config.order_cls(order_details_tag, config, full_details=True, order_number=order_number)
 
     @staticmethod
     def parse_order_history_page(html: str,
                                  config: AmazonOrdersConfig,
                                  start_index: int = 0) -> "OrderHistoryPageResult":
         """
-        Parse a single already-fetched Amazon Order history page — including a digital Order history
-        page (``orderFilter=digital``), which shares the same markup — into its Orders and page
+        Parse a single already-fetched Amazon Order history page, including a digital Order history
+        page (``orderFilter=digital``), which shares the same markup, into its Orders and page
         metadata, without a session driving the fetch.
 
         The result's :attr:`~amazonorders.orders.OrderHistoryPageResult.page_type` distinguishes a
         genuinely empty window (the page's own header count confirms there are no Orders at
         ``start_index``) from a page that is not Order history at all (sign-in, Captcha, or
-        challenge pages), and from a ``csd_encrypted`` page — one whose Order cards Amazon served
+        challenge pages), and from a ``csd_encrypted`` page, one whose Order cards Amazon served
         as an encrypted client-side-decryption payload rather than readable markup (observed on
         browser-fetched digital history; such pages carry a ``disableCsd`` noscript fallback). A
         page with no Order rows whose count does *not* confirm the window is spent raises, since
@@ -212,7 +228,7 @@ class AmazonOrders:
         """
         parsed = BeautifulSoup(html, config.bs4_parser)
 
-        header_count = AmazonOrders._parse_header_count(parsed, config)
+        header_count = _parse_order_count(util.select_one(parsed, config.selectors.ORDER_HISTORY_COUNT_SELECTOR))
 
         # An encrypted page still renders card shells, so this must be checked before row parsing
         if util.select_one(parsed, config.selectors.ORDER_HISTORY_CSD_ENCRYPTED_SELECTOR):
@@ -400,7 +416,8 @@ class AmazonOrders:
 
             pages_walked += 1
 
-            page_count = self._parse_header_count(page_response.parsed, self.config)
+            page_count = _parse_order_count(
+                util.select_one(page_response.parsed, self.config.selectors.ORDER_HISTORY_COUNT_SELECTOR))
             if pages_walked == 1:
                 header_count = page_count
 
