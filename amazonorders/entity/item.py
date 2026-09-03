@@ -40,6 +40,8 @@ class Item(Parsable):
                                                           attr_name="href")
         #: The product ASIN, derived from :attr:`link`; ``None`` when the link is not a product page.
         self.asin: Optional[str] = self.safe_parse(self._parse_asin)
+        #: The Prime Video GTI, derived from :attr:`link`; ``None`` when the link is not a video page.
+        self.video_gti: Optional[str] = self.safe_parse(self._parse_video_gti)
         #: The Item price.
         self.price: Optional[float] = self.to_currency(
             self.safe_simple_parse(selector=self.config.selectors.FIELD_ITEM_PRICE_SELECTOR)
@@ -80,6 +82,13 @@ class Item(Parsable):
             return None
         # ASIN only appears in the product URL path (/dp/, /gp/product/); no keyed attribute exists on order pages.
         match = re.search(r"/(?:dp|gp/product|product)/([A-Z0-9]{10})(?:[/?]|$)", self.link)
+        return match.group(1) if match else None
+
+    def _parse_video_gti(self) -> Optional[str]:
+        if not self.link:
+            return None
+        # Prime Video items are keyed by GTI in the product URL path, and carry no ASIN.
+        match = re.search(r"/gp/video/detail/(amzn1\.dv\.gti\.[0-9A-Za-z-]+)", self.link)
         return match.group(1) if match else None
 
     def _parse_quantity(self) -> Optional[int]:

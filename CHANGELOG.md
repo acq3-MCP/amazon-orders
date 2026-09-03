@@ -8,6 +8,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+- `Item.video_gti`, the Prime Video GTI parsed from `Item.link` (`None` when the link is not a video page). Prime Video items carry no ASIN, so this is their only identifier.
 - `AmazonOrders.parse_order_history_page()`, returning an `OrderHistoryPageResult` with the page's Orders, `header_count`, `next_page_url`, and a `page_type` distinguishing a confirmed-empty window from a sign-in/challenge page. Row-level failures carry `partial_orders` in the exception `meta`. The fetching walk shares the same per-page helpers.
 - `parse_order_history_page()` now classifies CSD-encrypted pages as `page_type="csd_encrypted"` instead of raising mid-row: some fetches (observed on browser-fetched digital history) render the order cards as encrypted client-side-decryption shells, detected via their `disableCsd` noscript fallback. `header_count` still populates when the time-filter label renders.
 - `AmazonGiftCards` with `get_balance()` and `get_gift_card_activity()` for read-only access to the Gift Card balance page (`/gc/balance`), and the `GiftCardActivity` entity (date, description, signed amount, closing balance, and Order references). Parsing is validated against sanitized captures of the live page.

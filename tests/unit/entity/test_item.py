@@ -82,6 +82,43 @@ class TestItem(UnitTestCase):
         self.assertEqual(item.title, "Item Title")
         self.assertIsNone(item.asin)
 
+    def test_video_gti_parsed_from_video_link(self):
+        # GIVEN a Prime Video item, whose link is a video detail page rather than a product page
+        html = """
+<div class="a-fixed-left-grid-col yohtmlc-item a-col-right">
+<div class="a-row">
+<a class="a-link-normal"
+   href="/gp/video/detail/amzn1.dv.gti.66b60399-3e99-f61d-d148-ac0752317559?ref_=x">Item Title</a>
+</div>
+</div>
+"""
+        parsed = BeautifulSoup(html, self.test_config.bs4_parser)
+
+        # WHEN
+        item = Item(parsed, self.test_config)
+
+        # THEN
+        self.assertEqual("amzn1.dv.gti.66b60399-3e99-f61d-d148-ac0752317559", item.video_gti)
+        self.assertIsNone(item.asin)
+
+    def test_video_gti_none_when_link_not_a_video_page(self):
+        # GIVEN
+        html = """
+<div class="a-fixed-left-grid-col yohtmlc-item a-col-right">
+<div class="a-row">
+<a class="a-link-normal" href="/dp/B0018CJYCO/ref=x">Item Title</a>
+</div>
+</div>
+"""
+        parsed = BeautifulSoup(html, self.test_config.bs4_parser)
+
+        # WHEN
+        item = Item(parsed, self.test_config)
+
+        # THEN
+        self.assertIsNone(item.video_gti)
+        self.assertEqual("B0018CJYCO", item.asin)
+
     def test_quantity_parsed_from_qty_element(self):
         # GIVEN an item with a whole-number quantity element
         html = """
