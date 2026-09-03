@@ -128,8 +128,8 @@ class AmazonGiftCards:
         On success, :attr:`last_activity_pull` is populated with metadata about the pull. On a
         mid-pagination failure, the raised :class:`~amazonorders.exception.AmazonOrdersError`'s
         :attr:`~amazonorders.exception.AmazonOrdersError.meta` carries ``next_page_url`` (where
-        paging stopped) and ``partial_activity`` (the entries fetched before the failure) —
-        resuming with ``next_page_url`` and prepending ``partial_activity`` to the resumed call's
+        paging stopped) and ``partial_activity`` (the entries fetched before the failure).
+        Resuming with ``next_page_url`` and prepending ``partial_activity`` to the resumed call's
         result composes the complete window. Keep that order (``partial_activity`` first): entries
         are newest-first, matching the ledger order the page renders.
 

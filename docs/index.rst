@@ -85,6 +85,56 @@ to the ``history`` CLI command), since by default it is ``False`` (enabling it s
 request for each order is necessary). Have a look at the :class:`~amazonorders.entity.order.Order` entity's docs to see
 what fields are only populated with full details.
 
+Gift Cards
+----------
+
+:class:`~amazonorders.gift_cards.AmazonGiftCards` reads the Gift Card balance and the activity ledger behind
+it (claim code redemptions, amounts applied to Orders, refunds credited back, and reloads). It is read-only;
+redeeming claim codes and reloading a balance are not supported.
+
+.. code:: python
+
+    from amazonorders.gift_cards import AmazonGiftCards
+
+    gift_cards = AmazonGiftCards(amazon_session)
+
+    balance = gift_cards.get_balance()
+
+    for entry in gift_cards.get_gift_card_activity(days=90):
+        print(f"{entry.activity_date} - {entry.description} - {entry.amount}")
+
+Each :class:`~amazonorders.entity.gift_card_activity.GiftCardActivity` carries a signed
+:attr:`~amazonorders.entity.gift_card_activity.GiftCardActivity.amount` (debits are negative) and the
+:attr:`~amazonorders.entity.gift_card_activity.GiftCardActivity.closing_balance` after it, so the ledger's
+running balance can be verified. Rows applied to an Order also carry
+:attr:`~amazonorders.entity.gift_card_activity.GiftCardActivity.order_number`, which is ``None`` on the rows
+Amazon renders without an Order link.
+
+Digital Orders
+--------------
+
+Digital Orders (``D01-`` IDs: video rentals and purchases, apps, eGift cards) do not appear in the default
+Order history at all. :class:`~amazonorders.digital_orders.AmazonDigitalOrders` walks the Digital Orders tab
+instead.
+
+.. code:: python
+
+    from amazonorders.digital_orders import AmazonDigitalOrders
+
+    digital_orders = AmazonDigitalOrders(amazon_session)
+
+    # A single year window
+    orders = digital_orders.get_digital_orders(year=2024)
+
+    # Or every year window the account's Digital Orders tab offers, newest first
+    orders = digital_orders.get_all_digital_orders()
+
+Rows parse in to the same :class:`~amazonorders.entity.order.Order` entity as the rest of the history, with
+Shipments and Recipients left empty, since digital Orders have neither. The tab's default window is the past
+three months, so :func:`~amazonorders.digital_orders.AmazonDigitalOrders.get_digital_orders` always sends an
+explicit time filter, and :func:`~amazonorders.digital_orders.AmazonDigitalOrders.get_all_digital_orders`
+enumerates the year windows the page itself offers rather than assuming a range.
+
 Command Line Usage
 ------------------
 
@@ -96,6 +146,9 @@ You can also run any command available to the main Python interface from the com
     amazon-orders history --year 2023
     amazon-orders history --last-30-days
     amazon-orders history --last-3-months
+    amazon-orders digital-orders --year 2024
+    amazon-orders gift-card-balance
+    amazon-orders gift-card-activity --days 90
 
 Automating Authentication
 -------------------------
@@ -155,6 +208,14 @@ Known Limitations
       different domain with your own credentials, please `contact us <mailto:contact@alexlaird.com>`_ and
       we will start mentioning support for that version of the site.
     - See `issue #15 <https://github.com/alexdlaird/amazon-orders/issues/15>`_ for more details.
+- Order history fetched outside an authenticated session may be encrypted
+    - Amazon sometimes serves an Order history page with its card content replaced by an encrypted
+      client-side-decryption payload. This has been observed on pages fetched by a browser rather than by
+      :class:`~amazonorders.session.AmazonSession`. The cards are present as empty shells, so no fields can
+      be read from them.
+    - :func:`~amazonorders.orders.AmazonOrders.parse_order_history_page` reports such a page as
+      ``page_type="csd_encrypted"`` rather than parsing it as empty Orders. Fetching the same window through
+      an authenticated session returns readable markup.
 - Device not remembered for OTP
     - Amazon will sometimes re-prompt for OTP even when a device has been remembered.
     - The recommended workaround for this is persisting the :attr:`~amazonorders.session.AmazonSession.otp_secret_key`
