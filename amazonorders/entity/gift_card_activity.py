@@ -48,7 +48,7 @@ class GiftCardActivity(Parsable):
         #: The Order number the GiftCardActivity references (physical ``111-…`` or digital
         #: ``D01-…`` IDs). ``None`` when the row renders no Order anchor: claim code redemptions
         #: and some refund rows, but also some applied-to-order debit rows (observed in the wild
-        #: on small amounts, likely digital orders) — so ``None`` on a debit is expected page
+        #: on small amounts, likely digital orders), so ``None`` on a debit is expected page
         #: behavior, not data loss.
         self.order_number: Optional[str] = self.safe_parse(self._parse_order_number)
         #: The Order details link. ``None`` whenever :attr:`order_number` is ``None``.
