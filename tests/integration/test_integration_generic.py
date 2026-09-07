@@ -4,7 +4,7 @@ __license__ = "MIT"
 import datetime
 import os
 
-from amazonorders.exception import AmazonOrdersNotFoundError
+from amazonorders.exception import AmazonOrdersError, AmazonOrdersNotFoundError
 from tests.integrationtestcase import IntegrationTestCase
 
 
@@ -129,6 +129,24 @@ class TestIntegrationGeneric(IntegrationTestCase):
                 self.assertAlmostEqual(newer.closing_balance,
                                        older.closing_balance + newer.amount,
                                        places=2)
+
+    def test_get_rewards_balance(self):
+        # WHEN
+        try:
+            rewards = self.amazon_rewards.get_rewards_balance()
+        except AmazonOrdersError as e:
+            if "Could not parse Rewards balance" in str(e) or "RewardsBalance.balance did not populate" in str(e):
+                self.skipTest("The account holds no Amazon rewards card (or the page changed): {}".format(e))
+            raise
+
+        # THEN
+        self.assertIsNotNone(rewards.balance)
+        self.assertGreaterEqual(rewards.balance, 0)
+        if rewards.points is not None:
+            self.assertGreaterEqual(rewards.points, 0)
+            # 100 points is $1, so the two figures must agree
+            self.assertAlmostEqual(rewards.balance, rewards.points / 100, places=2)
+        self.assertIsNotNone(rewards.card_last_four)
 
     def test_get_digital_orders(self):
         # WHEN

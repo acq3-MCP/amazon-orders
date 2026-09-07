@@ -22,6 +22,11 @@ Main Interface
     :private-members:
     :show-inheritance:
 
+.. automodule:: amazonorders.rewards
+    :members:
+    :private-members:
+    :show-inheritance:
+
 .. automodule:: amazonorders.digital_orders
     :members:
     :private-members:
@@ -66,6 +71,11 @@ Entities
     :show-inheritance:
 
 .. automodule:: amazonorders.entity.gift_card_activity
+    :members:
+    :private-members:
+    :show-inheritance:
+
+.. automodule:: amazonorders.entity.rewards_balance
     :members:
     :private-members:
     :show-inheritance:

@@ -284,3 +284,21 @@ class Selectors:
     FIELD_GIFT_CARD_ACTIVITY_CLOSING_BALANCE_SELECTOR = "td:nth-of-type(4)"
     FIELD_GIFT_CARD_ACTIVITY_ORDER_NUMBER_SELECTOR = "td:nth-of-type(2) a.a-link-normal span"
     FIELD_GIFT_CARD_ACTIVITY_ORDER_LINK_SELECTOR = "td:nth-of-type(2) a.a-link-normal"
+
+    #####################################
+    # CSS selectors for Rewards
+    #
+    # The co-branded credit card page (/credit/rewardscard/member) renders
+    # the "Rewards balance" box (dollar value and points) itself; the card
+    # balance and payment-due fields are Chase-hosted and only render after
+    # a separate Chase login, so they are not parsed. The selectors below
+    # are text-anchored rather than ID-based: the entity locates the
+    # innermost tag matching each anchor and reads the values from the
+    # enclosing box, so they survive class and ID churn on the widget.
+    #####################################
+
+    REWARDS_TEXT_TAGS = "h1, h2, h3, h4, h5, h6, span, div, p, b, strong, label"
+
+    REWARDS_BALANCE_HEADING_SELECTOR = Selector(REWARDS_TEXT_TAGS, text="Rewards balance")
+    REWARDS_CARD_NAME_SELECTOR = [Selector(REWARDS_TEXT_TAGS, text_contains="\u2022\u2022\u2022\u2022"),
+                                  Selector(REWARDS_TEXT_TAGS, text_contains="****")]
