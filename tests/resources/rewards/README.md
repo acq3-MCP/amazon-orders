@@ -10,7 +10,7 @@ balance and payment-due fields are not in the page data at all.
 
 | File | Variant | Provenance |
 | --- | --- | --- |
-| `rewards-card-member.html` | One card (Prime Visa) with a rewards balance in USD and points | Captured 2026-09-07 (browser "Save Page As"), sanitized |
+| `rewards-card-member.html` | One card (Prime Visa) with a rewards balance in USD and points | Captured 2026-09-07 (browser "Save Page As"), sanitized. A second capture the same day through the library's own `AmazonSession.get()` carried byte-identical page data apart from the request query string, and parsed to the same values |
 | `rewards-card-member-no-card.html` | Empty `usCbccCardInfos` list | Fabricated from the capture — the source account holds a card, so the real no-card rendering is unverified (it may be a redirect to the apply page rather than an empty list) |
 | `rewards-card-member-two-cards.html` | Two cards: the captured Prime Visa plus a fabricated non-Prime Amazon Visa with a `lastUpdateTime` set | Fabricated from the capture by duplicating the card entry |
 
