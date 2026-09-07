@@ -8,8 +8,8 @@ from bs4 import BeautifulSoup
 
 from amazonorders.conf import AmazonOrdersConfig
 from amazonorders.entity.rewards_balance import RewardsBalance
-from amazonorders.exception import AmazonOrdersError, AmazonOrdersAuthRedirectError
-from amazonorders.rewards import AmazonRewards
+from amazonorders.exception import AmazonOrdersError, AmazonOrdersAuthRedirectError, AmazonOrdersNotFoundError
+from amazonorders.rewards import AmazonRewards, _parse_card_infos
 from amazonorders.session import AmazonSession
 from tests.unittestcase import UnitTestCase
 
@@ -33,12 +33,6 @@ class TestRewards(UnitTestCase):
                 body=f.read(),
                 status=200,
             )
-
-    def _parse_fixture(self, html_file, config=None):
-        with open(os.path.join(self.RESOURCES_DIR, "rewards", html_file), "r",
-                  encoding="utf-8") as f:
-            parsed = BeautifulSoup(f.read(), self.test_config.bs4_parser)
-        return RewardsBalance(parsed, config or self.test_config)
 
     def test_get_rewards_balance_unauthenticated(self):
         # WHEN
@@ -74,44 +68,69 @@ class TestRewards(UnitTestCase):
 
         # THEN
         self.assertEqual(1, resp.call_count)
-        self.assertEqual(506.66, rewards.balance)
-        self.assertEqual(50666, rewards.points)
+        self.assertEqual(123.45, rewards.balance)
+        self.assertEqual("USD", rewards.currency)
+        self.assertEqual(12345, rewards.points)
+        self.assertEqual("WPTS", rewards.points_unit)
+        self.assertEqual(0.01, rewards.conversion_rate)
+        self.assertIsNone(rewards.last_update_time)
         self.assertEqual("Prime Visa", rewards.card_name)
-        self.assertEqual("9790", rewards.card_last_four)
-        self.assertEqual("<RewardsBalance Prime Visa 9790: \"506.66, Points: 50666\">", repr(rewards))
+        self.assertEqual("1234", rewards.card_last_four)
+        self.assertEqual("Visa", rewards.brand)
+        self.assertEqual("AmazonVisaSignature", rewards.cobrand)
+        self.assertEqual("prime", rewards.card_variant)
+        self.assertTrue(rewards.enrolled_with_shop_with_points)
+        self.assertEqual("<RewardsBalance Prime Visa 1234: \"123.45, Points: 12345\">", repr(rewards))
+        # Identifiers from the page data are not carried on the entity
+        self.assertFalse(any("token" in k or "cardId" in k or "cpid" in k for k in vars(rewards)))
+
+    @responses.activate
+    def test_get_rewards_balances_two_cards(self):
+        # GIVEN
+        self.amazon_session.is_authenticated = True
+        resp = self._given_rewards_page_exists("rewards-card-member-two-cards.html")
+
+        # WHEN
+        balances = self.amazon_rewards.get_rewards_balances()
+
+        # THEN page order is preserved
+        self.assertEqual(1, resp.call_count)
+        self.assertEqual(["1234", "5678"], [b.card_last_four for b in balances])
+        self.assertEqual("Amazon Visa", balances[1].card_name)
+        self.assertEqual(8.0, balances[1].balance)
+        self.assertEqual(800, balances[1].points)
+        self.assertEqual("2026-09-06T14:03:11Z", balances[1].last_update_time)
+        self.assertFalse(balances[1].enrolled_with_shop_with_points)
+
+    @responses.activate
+    def test_get_rewards_balance_selects_card(self):
+        # GIVEN
+        self.amazon_session.is_authenticated = True
+        self._given_rewards_page_exists("rewards-card-member-two-cards.html")
+        self._given_rewards_page_exists("rewards-card-member-two-cards.html")
+        self._given_rewards_page_exists("rewards-card-member-two-cards.html")
+
+        # WHEN / THEN the first card is the default, and card_last_four selects
+        self.assertEqual("1234", self.amazon_rewards.get_rewards_balance().card_last_four)
+        self.assertEqual("5678", self.amazon_rewards.get_rewards_balance(card_last_four="5678").card_last_four)
+        with self.assertRaises(AmazonOrdersNotFoundError) as cm:
+            self.amazon_rewards.get_rewards_balance(card_last_four="0000")
+        self.assertIn("ending in 0000", str(cm.exception))
 
     @responses.activate
     def test_get_rewards_balance_no_card(self):
-        # GIVEN the apply landing page renders instead of the member page
+        # GIVEN the page data carries an empty card list
         self.amazon_session.is_authenticated = True
-        resp = self._given_rewards_page_exists("rewards-card-no-card.html")
+        resp = self._given_rewards_page_exists("rewards-card-member-no-card.html")
 
         # WHEN
-        with self.assertRaises(AmazonOrdersError) as cm:
+        self.assertEqual([], self.amazon_rewards.get_rewards_balances())
+        with self.assertRaises(AmazonOrdersNotFoundError) as cm:
             self.amazon_rewards.get_rewards_balance()
 
         # THEN
-        self.assertEqual(1, resp.call_count)
-        self.assertIn("RewardsBalance.balance did not populate", str(cm.exception))
-
-    @responses.activate
-    def test_get_rewards_balance_no_card_warn_on_missing(self):
-        # GIVEN
-        config = AmazonOrdersConfig(data={"output_dir": self.test_output_dir,
-                                          "cookie_jar_path": self.test_cookie_jar_path,
-                                          "warn_on_missing_required_field": True})
-        amazon_session = AmazonSession("some-username@gmail.com", "some-password", config=config)
-        amazon_session.is_authenticated = True
-        amazon_rewards = AmazonRewards(amazon_session)
-        resp = self._given_rewards_page_exists("rewards-card-no-card.html")
-
-        # WHEN
-        with self.assertRaises(AmazonOrdersError) as cm:
-            amazon_rewards.get_rewards_balance()
-
-        # THEN the entity warned instead of raising, and the module raised on the None balance
-        self.assertEqual(1, resp.call_count)
-        self.assertIn("Could not parse Rewards balance.", str(cm.exception))
+        self.assertEqual(2, resp.call_count)
+        self.assertEqual("No Amazon rewards card on this account.", str(cm.exception))
 
     @responses.activate
     def test_get_rewards_balance_invalid_page(self):
@@ -131,41 +150,64 @@ class TestRewards(UnitTestCase):
 
         # THEN
         self.assertEqual(1, resp.call_count)
+        self.assertIn("Could not find the Rewards page data.", str(cm.exception))
+
+    def test_parse_card_infos_malformed(self):
+        # GIVEN
+        cases = {
+            "<script id=\"__NEXT_DATA__\">not json</script>": "Could not parse the Rewards page data",
+            "<script id=\"__NEXT_DATA__\">{\"props\": {\"pageProps\": {}}}</script>": "has no",
+            "<script id=\"__NEXT_DATA__\">{\"props\": {\"pageProps\": {\"initialPageData\": "
+            "{\"usCbccCardInfos\": \"x\"}}}}</script>": "is not a list",
+        }
+
+        for html, message in cases.items():
+            with self.subTest(html=html):
+                parsed = BeautifulSoup(html, self.test_config.bs4_parser)
+
+                # WHEN
+                with self.assertRaises(AmazonOrdersError) as cm:
+                    _parse_card_infos(parsed, self.test_config)
+
+                # THEN
+                self.assertIn(message, str(cm.exception))
+
+    def test_parse_card_infos_null_list(self):
+        # GIVEN
+        html = ("<script id=\"__NEXT_DATA__\">{\"props\": {\"pageProps\": {\"initialPageData\": "
+                "{\"usCbccCardInfos\": null}}}}</script>")
+        parsed = BeautifulSoup(html, self.test_config.bs4_parser)
+
+        # WHEN / THEN a null list is the no-card state, not a parse failure
+        self.assertEqual([], _parse_card_infos(parsed, self.test_config))
+
+    def test_rewards_balance_missing_amount(self):
+        # GIVEN
+        card_info = {"tail": "1234", "cardDisplayName": "Prime Visa", "pointsBalance": {"points": {"value": 100}}}
+
+        # WHEN / THEN the balance is required
+        with self.assertRaises(AmazonOrdersError) as cm:
+            RewardsBalance(card_info, self.test_config)
         self.assertIn("RewardsBalance.balance did not populate", str(cm.exception))
 
-    def test_rewards_balance_ignores_amounts_outside_the_box(self):
-        # GIVEN the referral offer ($500) and Chase placeholders ($-) render before the Rewards balance box
-        rewards = self._parse_fixture("rewards-card-member.html")
-
-        # THEN the balance is the one anchored to the "Rewards balance" label
-        self.assertEqual(506.66, rewards.balance)
-
-    def test_rewards_balance_points_optional(self):
-        # GIVEN a box that renders only the dollar value
-        html = """<div><h1>Prime Visa **** 1234</h1>
-                  <div><h2>Rewards balance</h2><span>$1,234.50</span></div></div>"""
-        parsed = BeautifulSoup(html, self.test_config.bs4_parser)
-
-        # WHEN
-        rewards = RewardsBalance(parsed, self.test_config)
+        # WHEN warn_on_missing_required_field is set it degrades to None
+        config = AmazonOrdersConfig(data={"output_dir": self.test_output_dir,
+                                          "cookie_jar_path": self.test_cookie_jar_path,
+                                          "warn_on_missing_required_field": True})
+        rewards = RewardsBalance(card_info, config)
 
         # THEN
-        self.assertEqual(1234.50, rewards.balance)
+        self.assertIsNone(rewards.balance)
+        self.assertEqual(100, rewards.points)
+        self.assertIsNone(rewards.currency)
+
+    def test_rewards_balance_sparse_card(self):
+        # GIVEN a card entry with only a balance
+        rewards = RewardsBalance({"pointsBalance": {"amount": {"value": 5}}}, self.test_config)
+
+        # THEN
+        self.assertEqual(5, rewards.balance)
         self.assertIsNone(rewards.points)
-        self.assertEqual("Prime Visa", rewards.card_name)
-        self.assertEqual("1234", rewards.card_last_four)
-
-    def test_rewards_balance_label_wrapped(self):
-        # GIVEN the label is wrapped in a bare div (the innermost match must win, not the wrapper)
-        html = """<div><div><span>Rewards balance</span></div>
-                  <span>$2.00</span><span>200 points</span></div>"""
-        parsed = BeautifulSoup(html, self.test_config.bs4_parser)
-
-        # WHEN
-        rewards = RewardsBalance(parsed, self.test_config)
-
-        # THEN
-        self.assertEqual(2.00, rewards.balance)
-        self.assertEqual(200, rewards.points)
         self.assertIsNone(rewards.card_name)
         self.assertIsNone(rewards.card_last_four)
+        self.assertIsNone(rewards.enrolled_with_shop_with_points)

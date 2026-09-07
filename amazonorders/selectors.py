@@ -288,17 +288,12 @@ class Selectors:
     #####################################
     # CSS selectors for Rewards
     #
-    # The co-branded credit card page (/credit/rewardscard/member) renders
-    # the "Rewards balance" box (dollar value and points) itself; the card
-    # balance and payment-due fields are Chase-hosted and only render after
-    # a separate Chase login, so they are not parsed. The selectors below
-    # are text-anchored rather than ID-based: the entity locates the
-    # innermost tag matching each anchor and reads the values from the
-    # enclosing box, so they survive class and ID churn on the widget.
+    # The co-branded credit card page (/credit/rewardscard/member) is a
+    # Next.js app: the visible widgets are client-rendered into an empty
+    # skeleton, but the server embeds the page data (every card, its
+    # rewards balance in dollars and points) in the standard Next.js
+    # __NEXT_DATA__ JSON script, so a plain GET carries everything needed.
+    # The card balance and payment-due fields are Chase-hosted and absent.
     #####################################
 
-    REWARDS_TEXT_TAGS = "h1, h2, h3, h4, h5, h6, span, div, p, b, strong, label"
-
-    REWARDS_BALANCE_HEADING_SELECTOR = Selector(REWARDS_TEXT_TAGS, text="Rewards balance")
-    REWARDS_CARD_NAME_SELECTOR = [Selector(REWARDS_TEXT_TAGS, text_contains="\u2022\u2022\u2022\u2022"),
-                                  Selector(REWARDS_TEXT_TAGS, text_contains="****")]
+    REWARDS_NEXT_DATA_SELECTOR = "script#__NEXT_DATA__"

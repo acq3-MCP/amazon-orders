@@ -114,9 +114,10 @@ Rewards
 -------
 
 :class:`~amazonorders.rewards.AmazonRewards` reads the rewards balance of the Amazon co-branded credit card
-(for instance, the Prime Visa) from the rewards card member page. Only what Amazon renders itself is
-available: the balance in dollars and points, and the masked card label. The card balance, payment due, and
-minimum due are hosted by the issuing bank behind a separate login, so they are not parsed.
+(for instance, the Prime Visa) from the rewards card member page. The page renders its widgets client-side,
+but the server embeds the card data in the page, so a plain fetch carries each card's balance in currency
+and points along with the card's name, network, and last four digits. The card balance, payment due, and
+minimum due are hosted by the issuing bank behind a separate login and are not available.
 
 .. code:: python
 
@@ -126,6 +127,10 @@ minimum due are hosted by the issuing bank behind a separate login, so they are 
 
     balance = rewards.get_rewards_balance()
     print(f"{balance.card_name} {balance.card_last_four}: {balance.balance} ({balance.points} points)")
+
+    # Accounts with several cards
+    for balance in rewards.get_rewards_balances():
+        print(f"{balance.card_last_four}: {balance.balance}")
 
 Digital Orders
 --------------

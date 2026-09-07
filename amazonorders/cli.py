@@ -453,7 +453,7 @@ Gift Card Activity for {days} days
 @click.pass_context
 def rewards_balance(ctx: Context) -> None:
     """
-    Get the current rewards balance of the Amazon co-branded credit card (for instance, the Prime Visa).
+    Get the current rewards balance of each Amazon co-branded credit card (for instance, the Prime Visa).
     """
     amazon_session = ctx.obj["amazon_session"]
 
@@ -464,9 +464,8 @@ def rewards_balance(ctx: Context) -> None:
         amazon_rewards = AmazonRewards(amazon_session,
                                        config=config)
 
-        rewards = amazon_rewards.get_rewards_balance()
-
-        click.echo(f"{_rewards_balance_output(rewards, config)}\n")
+        for rewards in amazon_rewards.get_rewards_balances():
+            click.echo(f"{_rewards_balance_output(rewards, config)}\n")
     except AmazonOrdersAuthRedirectError:
         _prompt_to_reauth_flow()
     except AmazonOrdersError as e:
@@ -662,6 +661,8 @@ def _rewards_balance_output(r: RewardsBalance,
         card_parts.append(f"\u2022\u2022\u2022\u2022 {r.card_last_four}")
     if card_parts:
         rewards_str += f"\n  Card: {' '.join(card_parts)}"
+    if r.last_update_time:
+        rewards_str += f"\n  Last Updated: {r.last_update_time}"
 
     return rewards_str
 

@@ -714,9 +714,9 @@ class TestCli(UnitTestCase):
         self.assertEqual(0, response.exit_code)
         self.assert_login_responses_success()
         self.assertEqual(1, resp.call_count)
-        self.assertIn("Rewards Balance: $506.66", response.output)
-        self.assertIn("Points: 50,666", response.output)
-        self.assertIn("Card: Prime Visa \u2022\u2022\u2022\u2022 9790", response.output)
+        self.assertIn("Rewards Balance: $123.45", response.output)
+        self.assertIn("Points: 12,345", response.output)
+        self.assertIn("Card: Prime Visa \u2022\u2022\u2022\u2022 1234", response.output)
 
     def test_digital_orders_command_year_and_all_conflict(self):
         # WHEN
