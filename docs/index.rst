@@ -110,6 +110,28 @@ running balance can be verified. Rows applied to an Order also carry
 :attr:`~amazonorders.entity.gift_card_activity.GiftCardActivity.order_number`, which is ``None`` on the rows
 Amazon renders without an Order link.
 
+Rewards
+-------
+
+:class:`~amazonorders.rewards.AmazonRewards` reads the rewards balance of the Amazon co-branded credit card
+(for instance, the Prime Visa) from the rewards card member page. The page renders its widgets client-side,
+but the server embeds the card data in the page, so a plain fetch carries each card's balance in currency
+and points along with the card's name, network, and last four digits. The card balance, payment due, and
+minimum due are hosted by the issuing bank behind a separate login and are not available.
+
+.. code:: python
+
+    from amazonorders.rewards import AmazonRewards
+
+    rewards = AmazonRewards(amazon_session)
+
+    balance = rewards.get_rewards_balance()
+    print(f"{balance.card_name} {balance.card_last_four}: {balance.balance} ({balance.points} points)")
+
+    # Accounts with several cards
+    for balance in rewards.get_rewards_balances():
+        print(f"{balance.card_last_four}: {balance.balance}")
+
 Digital Orders
 --------------
 
@@ -149,6 +171,7 @@ You can also run any command available to the main Python interface from the com
     amazon-orders digital-orders --year 2024
     amazon-orders gift-card-balance
     amazon-orders gift-card-activity --days 90
+    amazon-orders rewards-balance
 
 Automating Authentication
 -------------------------

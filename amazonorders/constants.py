@@ -130,6 +130,13 @@ class Constants:
     GIFT_CARD_BALANCE_URL = f"{BASE_URL}{GIFT_CARD_BALANCE_ROUTE}"
 
     ##########################################################################
+    # URLs for Rewards (co-branded credit card)
+    ##########################################################################
+
+    REWARDS_CARD_ROUTE = "/credit/rewardscard/member"
+    REWARDS_CARD_URL = f"{BASE_URL}{REWARDS_CARD_ROUTE}"
+
+    ##########################################################################
     # Headers
     ##########################################################################
 
@@ -230,6 +237,7 @@ class Constants:
         self.ORDER_INVOICE_URL = f"{base_url}/gp/css/summary/print.html"
         self.TRANSACTION_HISTORY_URL = f"{base_url}{self.TRANSACTION_HISTORY_ROUTE}"
         self.GIFT_CARD_BALANCE_URL = f"{base_url}{self.GIFT_CARD_BALANCE_ROUTE}"
+        self.REWARDS_CARD_URL = f"{base_url}{self.REWARDS_CARD_ROUTE}"
 
         host = urlparse(base_url).netloc.lower().split(":")[0]
         if host.startswith("www."):

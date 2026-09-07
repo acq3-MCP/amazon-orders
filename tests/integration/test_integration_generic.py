@@ -130,6 +130,22 @@ class TestIntegrationGeneric(IntegrationTestCase):
                                        older.closing_balance + newer.amount,
                                        places=2)
 
+    def test_get_rewards_balance(self):
+        # WHEN
+        try:
+            rewards = self.amazon_rewards.get_rewards_balance()
+        except AmazonOrdersNotFoundError as e:
+            self.skipTest(str(e))
+
+        # THEN
+        self.assertIsNotNone(rewards.balance)
+        self.assertGreaterEqual(rewards.balance, 0)
+        self.assertIsNotNone(rewards.card_name)
+        self.assertIsNotNone(rewards.card_last_four)
+        if rewards.points is not None and rewards.conversion_rate:
+            # The currency value must be the points at the page's own conversion rate
+            self.assertAlmostEqual(rewards.balance, rewards.points * rewards.conversion_rate, places=2)
+
     def test_get_digital_orders(self):
         # WHEN
         orders = self.amazon_digital_orders.get_digital_orders(year=self.year)

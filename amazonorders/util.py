@@ -54,7 +54,7 @@ def select(parsed: Tag, selector: Union[List[Union[str, Selector]], Union[str, S
         if isinstance(s, Selector):
             for t in parsed.select(s.css_selector):
                 if t and _selector_text_matches(t, s):
-                    tag += t
+                    tag.append(t)
         elif isinstance(s, str):
             tag = parsed.select(s)
         else:

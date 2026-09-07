@@ -19,9 +19,11 @@ from amazonorders.entity.order import Order
 from amazonorders.entity.transaction import Transaction
 from amazonorders.digital_orders import AmazonDigitalOrders
 from amazonorders.entity.gift_card_activity import GiftCardActivity
+from amazonorders.entity.rewards_balance import RewardsBalance
 from amazonorders.exception import AmazonOrdersError, AmazonOrdersAuthError, AmazonOrdersAuthRedirectError
 from amazonorders.gift_cards import AmazonGiftCards
 from amazonorders.orders import AmazonOrders
+from amazonorders.rewards import AmazonRewards
 from amazonorders.session import AmazonSession, IODefault
 from amazonorders.transactions import AmazonTransactions
 
@@ -447,6 +449,30 @@ Gift Card Activity for {days} days
         ctx.fail(str(e))
 
 
+@amazon_orders_cli.command()
+@click.pass_context
+def rewards_balance(ctx: Context) -> None:
+    """
+    Get the current rewards balance of each Amazon co-branded credit card (for instance, the Prime Visa).
+    """
+    amazon_session = ctx.obj["amazon_session"]
+
+    try:
+        _authenticate(amazon_session)
+
+        config = ctx.obj["conf"]
+        amazon_rewards = AmazonRewards(amazon_session,
+                                       config=config)
+
+        for rewards in amazon_rewards.get_rewards_balances():
+            click.echo(f"{_rewards_balance_output(rewards, config)}\n")
+    except AmazonOrdersAuthRedirectError:
+        _prompt_to_reauth_flow()
+    except AmazonOrdersError as e:
+        logger.debug("An error occurred.", exc_info=True)
+        ctx.fail(str(e))
+
+
 @amazon_orders_cli.command(short_help="Check if a persisted session exists.")
 @click.pass_context
 def check_session(ctx: Context) -> None:
@@ -621,6 +647,24 @@ def _gift_card_activity_output(a: GiftCardActivity,
         activity_str += f"\n  Order Details Link: {a.order_details_link}"
 
     return activity_str
+
+
+def _rewards_balance_output(r: RewardsBalance,
+                            config: AmazonOrdersConfig) -> str:
+    rewards_str = f"Rewards Balance: {config.constants.format_currency(r.balance)}"
+    if r.points is not None:
+        rewards_str += f"\n  Points: {r.points:,}"
+    card_parts = []
+    if r.card_name:
+        card_parts.append(r.card_name)
+    if r.card_last_four:
+        card_parts.append(f"\u2022\u2022\u2022\u2022 {r.card_last_four}")
+    if card_parts:
+        rewards_str += f"\n  Card: {' '.join(card_parts)}"
+    if r.last_update_time:
+        rewards_str += f"\n  Last Updated: {r.last_update_time}"
+
+    return rewards_str
 
 
 if __name__ == "__main__":

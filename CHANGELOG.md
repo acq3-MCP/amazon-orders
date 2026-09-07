@@ -19,6 +19,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - `AmazonDigitalOrders` (`amazonorders/digital_orders.py`) with `get_digital_orders()` (one time window) and `get_all_digital_orders()` (full-history walk enumerating the page's own year dropdown) for the Digital Orders tab (`orderFilter=digital`, orders with `D01-` IDs, absent from the default history). Rows parse with the standard `Order` entity. Per-pull observability via `last_digital_pull`; mid-walk failures carry `partial_orders` and the failed `window` in the exception `meta`.
 - `AmazonOrders.last_history_pull` (an `OrderHistoryPullResult` with `pages_walked`, `rows_parsed`, `header_count`, and `stop_reason`) for order history pull observability.
 - `digital-orders` CLI command.
+- `AmazonRewards` with `get_rewards_balance()` and `get_rewards_balances()` for read-only access to the co-branded credit card rewards page (`/credit/rewardscard/member`), and the `RewardsBalance` entity (balance in currency and points, conversion rate, card name, network, and last four digits). The page is a Next.js app whose widgets render client-side; the values are read from the server-embedded `__NEXT_DATA__` JSON. The Chase-hosted card balance and payment-due fields are not in the page data. Parsing is validated against a sanitized capture of the live page.
+- `rewards-balance` CLI command.
 
 ### Fixed
 
@@ -28,6 +30,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - `digital-orders --year --all` now fails explicitly instead of silently ignoring `--year`.
 - `get_gift_card_activity()` logs a warning when activity dates fail to parse (the `days` window cannot apply to such rows), instead of silently walking the full ledger.
 - `Parsable.to_currency()` is now a static method (it never used instance state), usable without constructing an entity.
+- `util.select()` given a `Selector` (text-matched) now returns the matched tags; it previously extended the result with each matched tag's children, so a matched tag with no children was dropped and a matched tag with several was counted several times.
 
 ## [4.5.0](https://github.com/alexdlaird/amazon-orders/compare/4.4.7...4.5.0) - 2026-09-02
 

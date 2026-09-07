@@ -687,6 +687,37 @@ class TestCli(UnitTestCase):
         self.assertIn("Closing Balance: $0.00", response.output)
         self.assertIn("26 Gift Card activity entries parsed", response.output)
 
+    @responses.activate
+    def test_rewards_balance_command(self):
+        # GIVEN
+        self.given_unauthenticated_home_page()
+        self.given_login_responses_success()
+        with open(os.path.join(self.RESOURCES_DIR, "rewards", "rewards-card-member.html"), "r",
+                  encoding="utf-8") as f:
+            resp = responses.add(
+                responses.GET,
+                f"{self.test_config.constants.REWARDS_CARD_URL}",
+                body=f.read(),
+                status=200,
+            )
+
+        # WHEN
+        response = self.runner.invoke(amazon_orders_cli,
+                                      [
+                                          "--config-path", self.test_config.config_path,
+                                          "--username", "some-username@gmail.com",
+                                          "--password", "some-password",
+                                          "rewards-balance"
+                                      ])
+
+        # THEN
+        self.assertEqual(0, response.exit_code)
+        self.assert_login_responses_success()
+        self.assertEqual(1, resp.call_count)
+        self.assertIn("Rewards Balance: $123.45", response.output)
+        self.assertIn("Points: 12,345", response.output)
+        self.assertIn("Card: Prime Visa \u2022\u2022\u2022\u2022 1234", response.output)
+
     def test_digital_orders_command_year_and_all_conflict(self):
         # WHEN
         response = self.runner.invoke(amazon_orders_cli,

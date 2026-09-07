@@ -284,3 +284,16 @@ class Selectors:
     FIELD_GIFT_CARD_ACTIVITY_CLOSING_BALANCE_SELECTOR = "td:nth-of-type(4)"
     FIELD_GIFT_CARD_ACTIVITY_ORDER_NUMBER_SELECTOR = "td:nth-of-type(2) a.a-link-normal span"
     FIELD_GIFT_CARD_ACTIVITY_ORDER_LINK_SELECTOR = "td:nth-of-type(2) a.a-link-normal"
+
+    #####################################
+    # CSS selectors for Rewards
+    #
+    # The co-branded credit card page (/credit/rewardscard/member) is a
+    # Next.js app: the visible widgets are client-rendered into an empty
+    # skeleton, but the server embeds the page data (every card, its
+    # rewards balance in dollars and points) in the standard Next.js
+    # __NEXT_DATA__ JSON script, so a plain GET carries everything needed.
+    # The card balance and payment-due fields are Chase-hosted and absent.
+    #####################################
+
+    REWARDS_NEXT_DATA_SELECTOR = "script#__NEXT_DATA__"
