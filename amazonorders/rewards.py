@@ -36,7 +36,8 @@ def _parse_card_infos(parsed: Tag,
 
     try:
         data: Any = json.loads(script_tag.get_text())
-    except ValueError as e:
+    except (ValueError, RecursionError) as e:
+        # RecursionError (deeply nested JSON) is a RuntimeError, not a ValueError, so it needs naming
         raise AmazonOrdersError(f"Could not parse the Rewards page data: {e}. "
                                 "Check if Amazon changed the HTML.")
 
