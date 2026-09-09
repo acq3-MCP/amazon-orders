@@ -30,6 +30,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - `digital-orders --year --all` now fails explicitly instead of silently ignoring `--year`.
 - `get_gift_card_activity()` logs a warning when activity dates fail to parse (the `days` window cannot apply to such rows), instead of silently walking the full ledger.
 - `Parsable.to_currency()` is now a static method (it never used instance state), usable without constructing an entity.
+- `Parsable.safe_parse()` now also degrades a field on `TypeError` and `RecursionError`, which is what page-embedded JSON produces when it is valid but not the expected shape (the Order address fallback wraps it in `BeautifulSoup`) or nested deeply enough to exhaust the interpreter's stack (`json.loads` raises `RecursionError`, a `RuntimeError`, not a `ValueError`). Previously either aborted the whole entity instead of degrading one field. Required-field errors still propagate.
+- `AmazonRewards` now raises `AmazonOrdersError` rather than a bare `RecursionError` on deeply nested page data.
 - `util.select()` given a `Selector` (text-matched) now returns the matched tags; it previously extended the result with each matched tag's children, so a matched tag with no children was dropped and a matched tag with several was counted several times.
 
 ## [4.5.0](https://github.com/alexdlaird/amazon-orders/compare/4.4.7...4.5.0) - 2026-09-02

@@ -172,6 +172,16 @@ class TestRewards(UnitTestCase):
                 # THEN
                 self.assertIn(message, str(cm.exception))
 
+    def test_parse_card_infos_deeply_nested(self):
+        # GIVEN page data nested deeply enough to exhaust the interpreter's stack
+        html = "<script id=\"__NEXT_DATA__\">" + "[" * 100000 + "]" * 100000 + "</script>"
+        parsed = BeautifulSoup(html, self.test_config.bs4_parser)
+
+        # WHEN / THEN it surfaces as the library's own error, not a RecursionError
+        with self.assertRaises(AmazonOrdersError) as cm:
+            _parse_card_infos(parsed, self.test_config)
+        self.assertIn("Could not parse the Rewards page data", str(cm.exception))
+
     def test_parse_card_infos_null_list(self):
         # GIVEN
         html = ("<script id=\"__NEXT_DATA__\">{\"props\": {\"pageProps\": {\"initialPageData\": "

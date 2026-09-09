@@ -52,7 +52,10 @@ class Parsable:
 
         try:
             return parse_function(**kwargs)
-        except (AttributeError, IndexError, ValueError):
+        except (AttributeError, IndexError, ValueError, TypeError, RecursionError):
+            # TypeError and RecursionError are what page-embedded JSON produces when it is valid but not
+            # the expected shape, or nested deeply enough to exhaust the interpreter's stack; both
+            # should degrade the field like any other parse failure rather than abort the entity.
             function = "simple_parse"
             if parse_function.__name__ != function:
                 function = parse_function.__name__.split("_parse_")[1]
