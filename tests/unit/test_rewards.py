@@ -1,6 +1,7 @@
 __copyright__ = "Copyright (c) 2024-2025 Alex Laird"
 __license__ = "MIT"
 
+import json
 import os
 
 import responses
@@ -189,31 +190,54 @@ class TestRewards(UnitTestCase):
         parsed = BeautifulSoup(html, self.test_config.bs4_parser)
 
         # WHEN / THEN a null list is the no-card state, not a parse failure
-        self.assertEqual([], _parse_card_infos(parsed, self.test_config))
+        script_tag, card_infos = _parse_card_infos(parsed, self.test_config)
+        self.assertEqual("script", script_tag.name)
+        self.assertEqual([], card_infos)
 
     def test_rewards_balance_missing_amount(self):
         # GIVEN
         card_info = {"tail": "1234", "cardDisplayName": "Prime Visa", "pointsBalance": {"points": {"value": 100}}}
 
         # WHEN / THEN the balance is required
+        parsed = BeautifulSoup("<script id=\"__NEXT_DATA__\">{}</script>", self.test_config.bs4_parser)
         with self.assertRaises(AmazonOrdersError) as cm:
-            RewardsBalance(card_info, self.test_config)
+            RewardsBalance(parsed, self.test_config, card_info)
         self.assertIn("RewardsBalance.balance did not populate", str(cm.exception))
 
         # WHEN warn_on_missing_required_field is set it degrades to None
         config = AmazonOrdersConfig(data={"output_dir": self.test_output_dir,
                                           "cookie_jar_path": self.test_cookie_jar_path,
                                           "warn_on_missing_required_field": True})
-        rewards = RewardsBalance(card_info, config)
+        rewards = RewardsBalance(parsed, config, card_info)
 
         # THEN
         self.assertIsNone(rewards.balance)
         self.assertEqual(100, rewards.points)
         self.assertIsNone(rewards.currency)
 
-    def test_rewards_balance_sparse_card(self):
+    def test_rewards_balance_to_dict(self):
+        # GIVEN
+        parsed = BeautifulSoup("<script id=\"__NEXT_DATA__\">{}</script>", self.test_config.bs4_parser)
+        rewards = RewardsBalance(parsed, self.test_config,
+                                 {"tail": "1234", "cardDisplayName": "Prime Visa",
+                                  "pointsBalance": {"amount": {"value": 12.34, "unit": "USD"},
+                                                    "points": {"value": 1234, "conversionRate": 0.01}}})
+
+        # WHEN
+        serialized = rewards.to_dict()
+
+        # THEN the page tag and config are omitted and the rest are primitives
+        self.assertNotIn("parsed", serialized)
+        self.assertNotIn("config", serialized)
+        self.assertEqual(12.34, serialized["balance"])
+        self.assertEqual(1234, serialized["points"])
+        self.assertEqual("1234", serialized["card_last_four"])
+        self.assertEqual(json.loads(json.dumps(serialized)), serialized)
+
+
         # GIVEN a card entry with only a balance
-        rewards = RewardsBalance({"pointsBalance": {"amount": {"value": 5}}}, self.test_config)
+        parsed = BeautifulSoup("<script id=\"__NEXT_DATA__\">{}</script>", self.test_config.bs4_parser)
+        rewards = RewardsBalance(parsed, self.test_config, {"pointsBalance": {"amount": {"value": 5}}})
 
         # THEN
         self.assertEqual(5, rewards.balance)

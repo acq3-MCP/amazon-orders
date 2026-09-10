@@ -672,6 +672,49 @@ class TestOrders(UnitTestCase):
         self.assertIsNone(order.index)
         self.assertEqual(1, resp.call_count)
 
+    def test_parse_order_history_recipient_scoped_to_each_order(self):
+        # GIVEN
+        with open(os.path.join(self.RESOURCES_DIR, "orders", "order-history-multiple-recipients.html"), "r",
+                  encoding="utf-8") as f:
+            html = f.read()
+
+        # WHEN
+        orders = AmazonOrders.parse_order_history(html, self.test_config)
+
+        # THEN
+        self.assertEqual(3, len(orders))
+        self.assertEqual(["Jane Doe", "Alex Laird", "Alex Laird"],
+                         [order.recipient.name for order in orders])
+        self.assertIn("555 Some Road", orders[0].recipient.address)
+        self.assertIn("555 My Road", orders[1].recipient.address)
+        self.assertIn("555 My Road", orders[2].recipient.address)
+
+    def test_parse_order_history_csd_encrypted(self):
+        # GIVEN
+        with open(os.path.join(self.RESOURCES_DIR, "orders", "order-history-csd-encrypted.html"), "r",
+                  encoding="utf-8") as f:
+            html = f.read()
+
+        # WHEN
+        with self.assertRaises(AmazonOrdersError) as cm:
+            AmazonOrders.parse_order_history(html, self.test_config)
+
+        # THEN
+        self.assertIn("encrypted", str(cm.exception))
+
+    def test_parse_order_history_no_js_fallback_is_not_encrypted(self):
+        # GIVEN
+        with open(os.path.join(self.RESOURCES_DIR, "orders", "order-details-fopo-113-4055495-4107437.html"), "r",
+                  encoding="utf-8") as f:
+            html = f.read()
+
+        # WHEN
+        with self.assertRaises(AmazonOrdersError) as cm:
+            AmazonOrders.parse_order_history(html, self.test_config)
+
+        # THEN
+        self.assertNotIn("encrypted", str(cm.exception))
+
     @responses.activate
     def test_get_order_chargesummary_totals(self):
         # GIVEN

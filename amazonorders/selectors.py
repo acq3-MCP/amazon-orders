@@ -58,6 +58,7 @@ class Selectors:
     MFA_DEVICE_SELECT_FORM_SELECTOR = "form#auth-select-device-form"
     MFA_DEVICE_SELECT_INPUT_SELECTOR = "input[name='otpDeviceContext']"
     MFA_DEVICE_SELECT_INPUT_SELECTOR_VALUE = "value"
+    MFA_DEVICE_SELECT_LABEL_SELECTOR = "span.a-label.a-radio-label"
     MFA_FORM_SELECTOR = "form#auth-mfa-form"
     CAPTCHA_1_FORM_SELECTOR = "form.cvf-widget-form-captcha"
     CAPTCHA_2_FORM_SELECTOR = ["form:has(input[id^='captchacharacters'])", "form[action$='validateCaptcha']"]
@@ -88,9 +89,8 @@ class Selectors:
     ORDER_HISTORY_COUNT_SELECTOR = [".js-yo-container span.num-orders",
                                     "form.js-time-filter-form label.time-filter__label b"]
     ORDER_HISTORY_TIME_FILTER_OPTIONS_SELECTOR = "form.js-time-filter-form select[name='timeFilter'] option"
-    # Some fetches (observed on browser-fetched digital history) serve the order cards as an encrypted
-    # client-side-decryption payload; the shell's noscript fallback names disableCsd
-    ORDER_HISTORY_CSD_ENCRYPTED_SELECTOR = "noscript meta[content*='disableCsd']"
+    ORDER_HISTORY_CSD_ENCRYPTED_SELECTOR = Selector("div.csd-encrypted-sensitive script",
+                                                    text_contains="csdContent(")
     ORDER_DETAILS_ENTITY_SELECTOR = ["div#orderDetails",
                                      "div#ordersContainer",
                                      "div#odp-main-section"]

@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased](https://github.com/alexdlaird/amazon-orders/compare/4.5.0...HEAD)
+## [Unreleased](https://github.com/alexdlaird/amazon-orders/compare/4.6.0...HEAD)
 
 ### Added
 
@@ -22,6 +22,14 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - `AmazonRewards` with `get_rewards_balance()` and `get_rewards_balances()` for read-only access to the co-branded credit card rewards page (`/credit/rewardscard/member`), and the `RewardsBalance` entity (balance in currency and points, conversion rate, card name, network, and last four digits). The page is a Next.js app whose widgets render client-side; the values are read from the server-embedded `__NEXT_DATA__` JSON. The Chase-hosted card balance and payment-due fields are not in the page data. Parsing is validated against a sanitized capture of the live page.
 - `rewards-balance` CLI command.
 
+- `--output` on the `digital-orders`, `gift-card-activity`, and `rewards-balance` CLI commands, rendering their entities as `text`, `json`, `yaml`, or `csv` like the upstream commands; their progress messages now go to `stderr`.
+- `OutputFormatter.gift_card_activity_text()` and `OutputFormatter.rewards_balance_text()`, the text renderers those commands previously kept in the CLI.
+
+### Changed
+
+- `RewardsBalance` now extends `Parsable` (its `parsed` is the page's `__NEXT_DATA__` script tag), so it has `to_dict()` and renders in every `OutputFormatter` format. Its constructor now takes the tag before the card entry.
+- Synced with upstream 4.6.0. `ORDER_HISTORY_CSD_ENCRYPTED_SELECTOR` now keys on the encrypted payload call rather than the no-JS fallback, which readable Whole Foods Market pages also carry.
+
 ### Fixed
 
 - `GiftCardActivity.order_number` now resolves digital (`D01-…`) Order IDs — ledger rows anchored to digital orders previously lost their Order reference entirely.
@@ -33,6 +41,22 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - `Parsable.safe_parse()` now also degrades a field on `TypeError` and `RecursionError`, which is what page-embedded JSON produces when it is valid but not the expected shape (the Order address fallback wraps it in `BeautifulSoup`) or nested deeply enough to exhaust the interpreter's stack (`json.loads` raises `RecursionError`, a `RuntimeError`, not a `ValueError`). Previously either aborted the whole entity instead of degrading one field. Required-field errors still propagate.
 - `AmazonRewards` now raises `AmazonOrdersError` rather than a bare `RecursionError` on deeply nested page data.
 - `util.select()` given a `Selector` (text-matched) now returns the matched tags; it previously extended the result with each matched tag's children, so a matched tag with no children was dropped and a matched tag with several was counted several times.
+
+## [4.6.0](https://github.com/alexdlaird/amazon-orders/compare/4.5.0...4.6.0) - 2026-09-10
+
+### Added
+
+- `Parsable.to_dict()`, serializing an entity and its nested entities to a `dict` of primitives.
+- `OutputFormatter`, which renders entities as `text`, `json`, `yaml`, or `csv`, and the `output_class` config key to override it.
+- CLI `--output` option on `history`, `order`, `transactions`, and `order-transactions`, for `text` (the default), `json`, `yaml`, or `csv` output.
+
+### Changed
+
+- Constructing an `AmazonOrdersConfig` no longer creates the config, output, or cookie jar directories. Each is now provisioned by the code that writes to it (`save()`, the session's debug page writes, and the session's cookie persistence), so a config built only to drive the `parse_*` methods has no filesystem side effects.
+
+### Fixed
+
+- Bug fixes and stability improvements.
 
 ## [4.5.0](https://github.com/alexdlaird/amazon-orders/compare/4.4.7...4.5.0) - 2026-09-02
 

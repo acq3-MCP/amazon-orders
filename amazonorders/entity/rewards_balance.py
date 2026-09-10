@@ -4,27 +4,30 @@ __license__ = "MIT"
 import logging
 from typing import Any, Dict, Optional
 
+from bs4 import Tag
+
 from amazonorders.conf import AmazonOrdersConfig
+from amazonorders.entity.parsable import Parsable
 from amazonorders.exception import AmazonOrdersError
 
 logger = logging.getLogger(__name__)
 
 
-class RewardsBalance:
+class RewardsBalance(Parsable):
     """
     The rewards balance of one Amazon co-branded credit card (for instance, the Prime Visa), as embedded
-    in the rewards card member page's ``__NEXT_DATA__`` JSON. Built from one entry of the page's card
-    list rather than from HTML, so it does not extend :class:`~amazonorders.entity.parsable.Parsable`.
+    in the rewards card member page's ``__NEXT_DATA__`` JSON. ``parsed`` is that script tag; the fields
+    are read from one entry of the card list it carries rather than from markup.
 
     Card identifiers in the source (wallet ID, card token, ownership references) are deliberately not
     retained.
     """
 
     def __init__(self,
-                 card_info: Dict[str, Any],
-                 config: AmazonOrdersConfig) -> None:
-        #: The config to use.
-        self.config: AmazonOrdersConfig = config
+                 parsed: Tag,
+                 config: AmazonOrdersConfig,
+                 card_info: Dict[str, Any]) -> None:
+        super().__init__(parsed, config)
 
         points_balance = card_info.get("pointsBalance") or {}
         amount = points_balance.get("amount") or {}
