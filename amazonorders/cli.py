@@ -15,15 +15,12 @@ from click.core import Context
 
 from amazonorders import __version__, util
 from amazonorders.conf import AmazonOrdersConfig
-from amazonorders.entity.order import Order
-from amazonorders.entity.transaction import Transaction
 from amazonorders.digital_orders import AmazonDigitalOrders
-from amazonorders.entity.gift_card_activity import GiftCardActivity
-from amazonorders.entity.rewards_balance import RewardsBalance
 from amazonorders.exception import AmazonOrdersError, AmazonOrdersAuthError, AmazonOrdersAuthRedirectError
 from amazonorders.gift_cards import AmazonGiftCards
 from amazonorders.orders import AmazonOrders
 from amazonorders.rewards import AmazonRewards
+from amazonorders.output import OutputFormatter
 from amazonorders.session import AmazonSession, IODefault
 from amazonorders.transactions import AmazonTransactions
 
@@ -133,6 +130,8 @@ def amazon_orders_cli(ctx: Context,
                    "This will execute an additional request per Order.")
 @click.option("--order-filter", "order_filter", default=None,
               help="The order type filter to use.")
+@click.option("-o", "--output", type=click.Choice(OutputFormatter.OUTPUT_FORMATS), default="text",
+              help="The output format. Defaults to text.")
 def history(ctx: Context,
             **kwargs: Any) -> None:
     """
@@ -150,6 +149,7 @@ def history(ctx: Context,
         single_page = kwargs["single_page"]
         full_details = kwargs["full_details"]
         order_filter = kwargs["order_filter"]
+        output = kwargs["output"]
 
         exclusive_flags = [year, last_3_months, last_30_days]
         if sum(1 for item in exclusive_flags if item) > 1:
@@ -175,28 +175,27 @@ Order History for {filter_description}{optional_start_index}{optional_full_detai
 -----------------------------------------------------------------------\n"""
                    .format(filter_description=filter_description,
                            optional_start_index=optional_start_index,
-                           optional_full_details=optional_full_details))
-        click.echo("Info: Fetching Order history, this might take a minute ...")
+                           optional_full_details=optional_full_details), err=True)
+        click.echo("Info: Fetching Order history, this might take a minute ...", err=True)
 
         config = ctx.obj["conf"]
         amazon_orders = AmazonOrders(amazon_session,
                                      config=config)
 
         start_time = time.time()
-        total = 0
-        for o in amazon_orders.get_order_history(year=year,
+        orders = amazon_orders.get_order_history(year=year,
                                                  start_index=start_index,
                                                  full_details=full_details,
                                                  keep_paging=not single_page,
                                                  time_filter=time_filter,
-                                                 order_filter=order_filter):
-            click.echo(f"{_order_output(o, config)}\n")
-            total += 1
+                                                 order_filter=order_filter)
         end_time = time.time()
 
+        click.echo(config.output_cls(config).format(orders, output))
+
         click.echo(
-            "... {total} Orders parsed in {time} seconds.\n".format(total=total,
-                                                                    time=int(end_time - start_time)))
+            "... {total} Orders parsed in {time} seconds.\n".format(total=len(orders),
+                                                                    time=int(end_time - start_time)), err=True)
     except AmazonOrdersAuthRedirectError:
         _prompt_to_reauth_flow()
     except AmazonOrdersError as e:
@@ -207,8 +206,11 @@ Order History for {filter_description}{optional_start_index}{optional_full_detai
 @amazon_orders_cli.command()
 @click.pass_context
 @click.argument("order_id")
+@click.option("-o", "--output", type=click.Choice(OutputFormatter.OUTPUT_FORMATS), default="text",
+              help="The output format. Defaults to text.")
 def order(ctx: Context,
-          order_id: str) -> None:
+          order_id: str,
+          **kwargs: Any) -> None:
     """
     Get the full details for a given Amazon Order ID.
     """
@@ -221,9 +223,11 @@ def order(ctx: Context,
         amazon_orders = AmazonOrders(amazon_session,
                                      config=config)
 
+        output = kwargs["output"]
+
         o = amazon_orders.get_order(order_id)
 
-        click.echo(f"{_order_output(o, config)}\n")
+        click.echo(config.output_cls(config).format([o], output))
     except AmazonOrdersAuthRedirectError:
         _prompt_to_reauth_flow()
     except AmazonOrdersError as e:
@@ -261,8 +265,11 @@ def invoice(ctx: Context,
 @amazon_orders_cli.command("order-transactions")
 @click.pass_context
 @click.argument("order_id")
+@click.option("-o", "--output", type=click.Choice(OutputFormatter.OUTPUT_FORMATS), default="text",
+              help="The output format. Defaults to text.")
 def order_transactions(ctx: Context,
-                       order_id: str) -> None:
+                       order_id: str,
+                       **kwargs: Any) -> None:
     """
     Get the Transactions for a given Amazon Order ID.
     """
@@ -275,16 +282,17 @@ def order_transactions(ctx: Context,
         amazon_transactions = AmazonTransactions(amazon_session,
                                                  config=config)
 
+        output = kwargs["output"]
+
         start_time = time.time()
-        total = 0
-        for t in amazon_transactions.get_transactions(order_id=order_id):
-            click.echo(f"{_transaction_output(t, config)}\n")
-            total += 1
+        order_transaction_list = amazon_transactions.get_transactions(order_id=order_id)
         end_time = time.time()
 
+        click.echo(config.output_cls(config).format(order_transaction_list, output))
+
         click.echo(
-            "... {total} Transactions parsed in {time} seconds.\n".format(total=total,
-                                                                          time=int(end_time - start_time)))
+            "... {total} Transactions parsed in {time} seconds.\n".format(total=len(order_transaction_list),
+                                                                          time=int(end_time - start_time)), err=True)
     except AmazonOrdersAuthRedirectError:
         _prompt_to_reauth_flow()
     except AmazonOrdersError as e:
@@ -296,6 +304,8 @@ def order_transactions(ctx: Context,
 @click.pass_context
 @click.option("--days", default=365,
               help="The number of days of Transactions to get.")
+@click.option("-o", "--output", type=click.Choice(OutputFormatter.OUTPUT_FORMATS), default="text",
+              help="The output format. Defaults to text.")
 def transactions(ctx: Context, **kwargs: Any):
     """
     Get Amazon Transaction history for a given number of days.
@@ -306,28 +316,28 @@ def transactions(ctx: Context, **kwargs: Any):
         _authenticate(amazon_session)
 
         days = kwargs["days"]
+        output = kwargs["output"]
 
         click.echo(
             """-----------------------------------------------------------------------
 Transaction History for {days} days
------------------------------------------------------------------------\n""".format(days=days)
+-----------------------------------------------------------------------\n""".format(days=days), err=True
         )
-        click.echo("Info: Fetching Transaction history, this might take a minute ...")
+        click.echo("Info: Fetching Transaction history, this might take a minute ...", err=True)
 
         config = ctx.obj["conf"]
         amazon_transactions = AmazonTransactions(amazon_session,
                                                  config=config)
 
         start_time = time.time()
-        total = 0
-        for t in amazon_transactions.get_transactions(days=days):
-            click.echo(f"{_transaction_output(t, config)}\n")
-            total += 1
+        transaction_list = amazon_transactions.get_transactions(days=days)
         end_time = time.time()
 
+        click.echo(config.output_cls(config).format(transaction_list, output))
+
         click.echo(
-            "... {total} Transactions parsed in {time} seconds.\n".format(total=total,
-                                                                          time=int(end_time - start_time)))
+            "... {total} Transactions parsed in {time} seconds.\n".format(total=len(transaction_list),
+                                                                          time=int(end_time - start_time)), err=True)
     except AmazonOrdersAuthRedirectError:
         _prompt_to_reauth_flow()
     except AmazonOrdersError as e:
@@ -341,6 +351,8 @@ Transaction History for {days} days
               help="The year for which to get digital Orders. Defaults to the current year.")
 @click.option("--all", "all_years", is_flag=True, default=False,
               help="Walk the account's full digital Order history instead of a single year.")
+@click.option("-o", "--output", type=click.Choice(OutputFormatter.OUTPUT_FORMATS), default="text",
+              help="The output format. Defaults to text.")
 def digital_orders(ctx: Context, **kwargs: Any) -> None:
     """
     Get digital Amazon Order history (orders with D01- IDs, which do not appear
@@ -358,7 +370,7 @@ def digital_orders(ctx: Context, **kwargs: Any) -> None:
         amazon_digital_orders = AmazonDigitalOrders(amazon_session,
                                                     config=config)
 
-        click.echo("Info: Fetching digital Order history, this might take a minute ...")
+        click.echo("Info: Fetching digital Order history, this might take a minute ...", err=True)
 
         start_time = time.time()
         if kwargs["all_years"]:
@@ -367,12 +379,12 @@ def digital_orders(ctx: Context, **kwargs: Any) -> None:
             orders = amazon_digital_orders.get_digital_orders(year=kwargs["year"])
         end_time = time.time()
 
-        for o in orders:
-            click.echo(f"{_order_output(o, config)}\n")
+        click.echo(config.output_cls(config).format(orders, kwargs["output"]))
 
         click.echo(
             "... {total} digital Orders parsed in {time} seconds.\n".format(total=len(orders),
-                                                                            time=int(end_time - start_time)))
+                                                                            time=int(end_time - start_time)),
+            err=True)
     except AmazonOrdersAuthRedirectError:
         _prompt_to_reauth_flow()
     except AmazonOrdersError as e:
@@ -409,6 +421,8 @@ def gift_card_balance(ctx: Context) -> None:
 @click.pass_context
 @click.option("--days", default=365,
               help="The number of days of Gift Card activity to get.")
+@click.option("-o", "--output", type=click.Choice(OutputFormatter.OUTPUT_FORMATS), default="text",
+              help="The output format. Defaults to text.")
 def gift_card_activity(ctx: Context, **kwargs: Any):
     """
     Get Amazon Gift Card activity for a given number of days.
@@ -423,25 +437,26 @@ def gift_card_activity(ctx: Context, **kwargs: Any):
         click.echo(
             """-----------------------------------------------------------------------
 Gift Card Activity for {days} days
------------------------------------------------------------------------\n""".format(days=days)
+-----------------------------------------------------------------------\n""".format(days=days),
+            err=True
         )
-        click.echo("Info: Fetching Gift Card activity, this might take a minute ...")
+        click.echo("Info: Fetching Gift Card activity, this might take a minute ...", err=True)
 
         config = ctx.obj["conf"]
         amazon_gift_cards = AmazonGiftCards(amazon_session,
                                             config=config)
 
         start_time = time.time()
-        total = 0
-        for a in amazon_gift_cards.get_gift_card_activity(days=days):
-            click.echo(f"{_gift_card_activity_output(a, config)}\n")
-            total += 1
+        activity = amazon_gift_cards.get_gift_card_activity(days=days)
         end_time = time.time()
+
+        click.echo(config.output_cls(config).format(activity, kwargs["output"]))
 
         click.echo(
             "... {total} Gift Card activity entries parsed in {time} seconds.\n".format(
-                total=total,
-                time=int(end_time - start_time)))
+                total=len(activity),
+                time=int(end_time - start_time)),
+            err=True)
     except AmazonOrdersAuthRedirectError:
         _prompt_to_reauth_flow()
     except AmazonOrdersError as e:
@@ -451,7 +466,9 @@ Gift Card Activity for {days} days
 
 @amazon_orders_cli.command()
 @click.pass_context
-def rewards_balance(ctx: Context) -> None:
+@click.option("-o", "--output", type=click.Choice(OutputFormatter.OUTPUT_FORMATS), default="text",
+              help="The output format. Defaults to text.")
+def rewards_balance(ctx: Context, **kwargs: Any) -> None:
     """
     Get the current rewards balance of each Amazon co-branded credit card (for instance, the Prime Visa).
     """
@@ -464,8 +481,7 @@ def rewards_balance(ctx: Context) -> None:
         amazon_rewards = AmazonRewards(amazon_session,
                                        config=config)
 
-        for rewards in amazon_rewards.get_rewards_balances():
-            click.echo(f"{_rewards_balance_output(rewards, config)}\n")
+        click.echo(config.output_cls(config).format(amazon_rewards.get_rewards_balances(), kwargs["output"]))
     except AmazonOrdersAuthRedirectError:
         _prompt_to_reauth_flow()
     except AmazonOrdersError as e:
@@ -543,7 +559,7 @@ def version(ctx: Context) -> None:
 
 
 def _print_banner() -> None:
-    click.echo(banner.format(version=__version__))
+    click.echo(banner.format(version=__version__), err=True)
 
 
 def _authenticate(amazon_session: AmazonSession,
@@ -580,91 +596,6 @@ def _authenticate(amazon_session: AmazonSession,
 def _prompt_to_reauth_flow() -> None:
     click.echo("... Amazon redirected to login, which likely means the persisted session is stale. It was logged "
                "out, so try running the command again.\n")
-
-
-def _order_output(o: Order,
-                  config: AmazonOrdersConfig) -> str:
-    order_str = """-----------------------------------------------------------------------
-Order #{order_number}
------------------------------------------------------------------------""".format(order_number=o.order_number)
-
-    order_str += f"\n  Shipments: {o.shipments}"
-    order_str += f"\n  Order Details Link: {o.order_details_link}"
-    if o.grand_total:
-        order_str += f"\n  Grand Total: {config.constants.format_currency(o.grand_total)}"
-    order_str += f"\n  Order Placed Date: {o.order_placed_date}"
-    if o.recipient:
-        order_str += f"\n  {o.recipient}"
-    else:
-        order_str += "\n  Recipient: None"
-
-    if o.payment_method:
-        order_str += f"\n  Payment Method: {o.payment_method}"
-    if o.payment_method_last_4:
-        order_str += f"\n  Payment Method Last 4: {o.payment_method_last_4}"
-    if o.subtotal:
-        order_str += f"\n  Subtotal: {config.constants.format_currency(o.subtotal)}"
-    if o.shipping_total:
-        order_str += f"\n  Shipping Total: {config.constants.format_currency(o.shipping_total)}"
-    if o.free_shipping:
-        order_str += f"\n  Free Shipping: {config.constants.format_currency(o.free_shipping)}"
-    if o.subscription_discount:
-        order_str += f"\n  Subscription Discount: {config.constants.format_currency(o.subscription_discount)}"
-    if o.total_before_tax:
-        order_str += f"\n  Total Before Tax: {config.constants.format_currency(o.total_before_tax)}"
-    if o.estimated_tax:
-        order_str += f"\n  Estimated Tax: {config.constants.format_currency(o.estimated_tax)}"
-    if o.refund_total:
-        order_str += f"\n  Refund Total: {config.constants.format_currency(o.refund_total)}"
-
-    order_str += "\n-----------------------------------------------------------------------"
-
-    return order_str
-
-
-def _transaction_output(t: Transaction,
-                        config: AmazonOrdersConfig) -> str:
-    transaction_str = f"Transaction: {t.completed_date}"
-    transaction_str += f"\n  Order #{t.order_number}"
-    if t.grand_total:
-        transaction_str += f"\n  Grand Total: {config.constants.format_currency(t.grand_total)}"
-    transaction_str += f"\n  Order Details Link: {t.order_details_link}"
-
-    return transaction_str
-
-
-def _gift_card_activity_output(a: GiftCardActivity,
-                               config: AmazonOrdersConfig) -> str:
-    activity_str = f"Gift Card Activity: {a.activity_date}"
-    if a.description:
-        activity_str += f"\n  Description: {a.description}"
-    if a.amount is not None:
-        activity_str += f"\n  Amount: {config.constants.format_currency(a.amount)}"
-    if a.closing_balance is not None:
-        activity_str += f"\n  Closing Balance: {config.constants.format_currency(a.closing_balance)}"
-    if a.order_number:
-        activity_str += f"\n  Order #{a.order_number}"
-        activity_str += f"\n  Order Details Link: {a.order_details_link}"
-
-    return activity_str
-
-
-def _rewards_balance_output(r: RewardsBalance,
-                            config: AmazonOrdersConfig) -> str:
-    rewards_str = f"Rewards Balance: {config.constants.format_currency(r.balance)}"
-    if r.points is not None:
-        rewards_str += f"\n  Points: {r.points:,}"
-    card_parts = []
-    if r.card_name:
-        card_parts.append(r.card_name)
-    if r.card_last_four:
-        card_parts.append(f"\u2022\u2022\u2022\u2022 {r.card_last_four}")
-    if card_parts:
-        rewards_str += f"\n  Card: {' '.join(card_parts)}"
-    if r.last_update_time:
-        rewards_str += f"\n  Last Updated: {r.last_update_time}"
-
-    return rewards_str
 
 
 if __name__ == "__main__":

@@ -3,7 +3,7 @@ __license__ = "MIT"
 
 import json
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from bs4 import Tag
 
@@ -20,7 +20,7 @@ _CARD_INFOS_PATH = ("props", "pageProps", "initialPageData", "usCbccCardInfos")
 
 
 def _parse_card_infos(parsed: Tag,
-                      config: AmazonOrdersConfig) -> List[Dict[str, Any]]:
+                      config: AmazonOrdersConfig) -> Tuple[Tag, List[Dict[str, Any]]]:
     """
     Extract the card list from the rewards card member page. The page is a Next.js app whose widgets
     render client-side into an empty skeleton, so the visible DOM is useless to a plain fetch; the
@@ -28,7 +28,7 @@ def _parse_card_infos(parsed: Tag,
 
     :param parsed: The parsed page.
     :param config: The config to use.
-    :return: The raw card entries, in page order (possibly empty).
+    :return: The page data script tag, and the raw card entries in page order (possibly empty).
     """
     script_tag = util.select_one(parsed, config.selectors.REWARDS_NEXT_DATA_SELECTOR)
     if script_tag is None:
@@ -48,11 +48,11 @@ def _parse_card_infos(parsed: Tag,
         data = data[key]
 
     if data is None:
-        return []
+        return script_tag, []
     if not isinstance(data, list):
         raise AmazonOrdersError("Rewards page data card list is not a list. Check if Amazon changed the page data.")
 
-    return data
+    return script_tag, data
 
 
 class AmazonRewards:
@@ -96,8 +96,9 @@ class AmazonRewards:
         page_response = self.amazon_session.get(self.config.constants.REWARDS_CARD_URL)
         self.amazon_session.check_response(page_response)
 
-        return [RewardsBalance(card_info, self.config)
-                for card_info in _parse_card_infos(page_response.parsed, self.config)]
+        script_tag, card_infos = _parse_card_infos(page_response.parsed, self.config)
+
+        return [RewardsBalance(script_tag, self.config, card_info) for card_info in card_infos]
 
     def get_rewards_balance(self,
                             card_last_four: Optional[str] = None) -> RewardsBalance:
