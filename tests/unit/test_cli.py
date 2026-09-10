@@ -760,7 +760,7 @@ class TestCli(UnitTestCase):
         self.assertEqual(123.45, balances[0]["balance"])
         self.assertNotIn("parsed", balances[0])
 
-
+    def test_digital_orders_command_year_and_all_conflict(self):
         # WHEN
         response = self.runner.invoke(amazon_orders_cli,
                                       [
@@ -773,6 +773,8 @@ class TestCli(UnitTestCase):
         # THEN
         self.assertNotEqual(0, response.exit_code)
         self.assertIn("Only one of --year or --all", response.output)
+
+    @responses.activate
     def test_history_command_output_json(self):
         # GIVEN
         year = 2018

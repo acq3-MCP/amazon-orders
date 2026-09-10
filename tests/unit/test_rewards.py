@@ -234,7 +234,7 @@ class TestRewards(UnitTestCase):
         self.assertEqual("1234", serialized["card_last_four"])
         self.assertEqual(json.loads(json.dumps(serialized)), serialized)
 
-
+    def test_rewards_balance_sparse_card(self):
         # GIVEN a card entry with only a balance
         parsed = BeautifulSoup("<script id=\"__NEXT_DATA__\">{}</script>", self.test_config.bs4_parser)
         rewards = RewardsBalance(parsed, self.test_config, {"pointsBalance": {"amount": {"value": 5}}})
