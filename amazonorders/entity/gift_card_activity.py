@@ -2,7 +2,6 @@ __copyright__ = "Copyright (c) 2024-2025 Alex Laird"
 __license__ = "MIT"
 
 import logging
-import re
 from datetime import date
 from typing import Optional, Union
 
@@ -11,10 +10,9 @@ from bs4 import Tag
 from amazonorders.conf import AmazonOrdersConfig
 from amazonorders.entity.parsable import Parsable
 from amazonorders.exception import AmazonOrdersError
+from amazonorders.util import ORDER_NUMBER_REGEX
 
 logger = logging.getLogger(__name__)
-
-ORDER_NUMBER_REGEX = re.compile(r"((?:\d{3}|[A-Z]\d{2})-\d{7}-\d{7})")
 
 
 class GiftCardActivity(Parsable):

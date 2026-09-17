@@ -24,8 +24,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - `AmazonPrime` (`amazonorders/prime.py`) with `get_prime_payments()` for the Prime membership payment history page (`/mc/payments`), and the `PrimePayment` entity (charge date, total, digital `D01-` Order number, Order details link, and receipt link). Membership fees are digital Orders that neither the Order history nor the Digital Orders tab lists, so this page is the index to them; the Orders themselves render in the standard details layout and parse with `AmazonOrders.get_order()`. Parsing is validated against a sanitized capture of the live page.
 - `AmazonPrime.parse_prime_payments_page()`, the parse-from-string twin, returning a `PrimePaymentsPageResult` whose `page_type` distinguishes `payments`, `empty` (the widget rendered with no cards), and `not_prime_payments` (a sign-in or challenge page). Card-level failures carry `partial_payments` in the exception `meta`.
 - `prime-payments` CLI command, with `--output`, and `OutputFormatter.prime_payment_text()`.
-- `Selectors.AUTH_CHALLENGE_PAGE_SELECTORS`, the sign-in/Captcha/challenge page selectors parse-from-string entry points check to tell such a page apart from an empty one.
-- `util.ORDER_NUMBER_REGEX`, the physical-or-digital Order number pattern, for entities to share.
+- `Selectors.AUTH_CHALLENGE_PAGE_SELECTORS`, the sign-in/Captcha/challenge page selectors the parse-from-string entry points share; `parse_order_history_page()` now uses it in place of its inline list.
+- `util.ORDER_NUMBER_REGEX`, the physical-or-digital Order number pattern, moved from `entity.gift_card_activity` (which still imports it) so entities can share it.
 
 - `--output` on the `digital-orders`, `gift-card-activity`, and `rewards-balance` CLI commands, rendering their entities as `text`, `json`, `yaml`, or `csv` like the upstream commands; their progress messages now go to `stderr`.
 - `OutputFormatter.gift_card_activity_text()` and `OutputFormatter.rewards_balance_text()`, the text renderers those commands previously kept in the CLI.
