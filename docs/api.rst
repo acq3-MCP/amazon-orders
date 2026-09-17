@@ -27,6 +27,11 @@ Main Interface
     :private-members:
     :show-inheritance:
 
+.. automodule:: amazonorders.prime
+    :members:
+    :private-members:
+    :show-inheritance:
+
 .. automodule:: amazonorders.digital_orders
     :members:
     :private-members:
@@ -119,6 +124,11 @@ Entities
     :show-inheritance:
 
 .. automodule:: amazonorders.entity.order
+    :members:
+    :private-members:
+    :show-inheritance:
+
+.. automodule:: amazonorders.entity.prime_payment
     :members:
     :private-members:
     :show-inheritance:

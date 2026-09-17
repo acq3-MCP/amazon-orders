@@ -146,6 +146,29 @@ class TestIntegrationGeneric(IntegrationTestCase):
             # The currency value must be the points at the page's own conversion rate
             self.assertAlmostEqual(rewards.balance, rewards.points * rewards.conversion_rate, places=2)
 
+    def test_get_prime_payments(self):
+        # WHEN
+        payments = self.amazon_prime.get_prime_payments()
+
+        # THEN
+        if not payments:
+            self.skipTest("No Prime payments on this account.")
+        for payment in payments:
+            self.assertIsNotNone(payment.payment_date)
+            self.assertIsNotNone(payment.total)
+            self.assertGreater(payment.total, 0)
+            self.assertIsNotNone(payment.order_number)
+            self.assertTrue(payment.order_number.startswith("D01-"))
+            self.assertIsNotNone(payment.receipt_link)
+        # Newest first, as the page lists them
+        self.assertEqual(payments, sorted(payments, key=lambda p: p.payment_date, reverse=True))
+
+        # The charge is a digital Order that renders in the standard details layout, and the two agree
+        order = self.amazon_orders.get_order(payments[0].order_number)
+        self.assertEqual(payments[0].order_number, order.order_number)
+        self.assertEqual(payments[0].payment_date, order.order_placed_date)
+        self.assertAlmostEqual(payments[0].total, order.grand_total, places=2)
+
     def test_get_digital_orders(self):
         # WHEN
         orders = self.amazon_digital_orders.get_digital_orders(year=self.year)

@@ -61,6 +61,7 @@ class TestItem(UnitTestCase):
         # WHEN / THEN safe_parse must not swallow it
         with self.assertRaises(AmazonOrdersError):
             parsable.safe_parse(_parse_required)
+
     def test_to_dict_excludes_unserializable_fields(self):
         # GIVEN
         with open(os.path.join(self.RESOURCES_DIR, "orders", "order-history-2018-0.html"), "r",

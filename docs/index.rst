@@ -132,6 +132,32 @@ minimum due are hosted by the issuing bank behind a separate login and are not a
     for balance in rewards.get_rewards_balances():
         print(f"{balance.card_last_four}: {balance.balance}")
 
+Prime Payments
+--------------
+
+Prime membership fees are billed as digital Orders (``D01-`` IDs) that neither the Order history nor the
+Digital Orders tab lists; the Prime payments page under Membership Central is the only listing of them.
+:class:`~amazonorders.prime.AmazonPrime` reads it, and each
+:class:`~amazonorders.entity.prime_payment.PrimePayment` carries the charge date, the total, and the Order
+number. The Order itself (line item, payment method, subtotal, and tax) renders in the standard Order details
+layout, so it is fetched like any other Order.
+
+.. code:: python
+
+    from amazonorders.prime import AmazonPrime
+
+    prime = AmazonPrime(amazon_session)
+
+    for payment in prime.get_prime_payments():
+        print(f"{payment.payment_date} - {payment.total} - {payment.order_number}")
+
+        order = amazon_orders.get_order(payment.order_number)
+
+An already-fetched page (for instance, one saved from a browser) can be parsed without a session with
+:func:`~amazonorders.prime.AmazonPrime.parse_prime_payments_page`, whose result's
+:attr:`~amazonorders.prime.PrimePaymentsPageResult.page_type` tells a member with no payments apart from a
+sign-in or challenge page.
+
 Digital Orders
 --------------
 
@@ -172,12 +198,13 @@ You can also run any command available to the main Python interface from the com
     amazon-orders gift-card-balance
     amazon-orders gift-card-activity --days 90
     amazon-orders rewards-balance
+    amazon-orders prime-payments
 
 Output Formats
 --------------
 
 The ``history``, ``order``, ``transactions``, ``order-transactions``, ``digital-orders``, ``gift-card-activity``,
-and ``rewards-balance`` commands accept ``--output``, which renders their entities as ``text`` (the default), ``json``, ``yaml``, or ``csv``. Progress messages
+``rewards-balance``, and ``prime-payments`` commands accept ``--output``, which renders their entities as ``text`` (the default), ``json``, ``yaml``, or ``csv``. Progress messages
 are written to ``stderr``, so redirecting ``stdout`` captures only the data.
 
 .. code:: sh

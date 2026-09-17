@@ -4,7 +4,7 @@ __license__ = "MIT"
 from bs4 import BeautifulSoup
 
 from amazonorders.selectors import Selector
-from amazonorders.util import to_type, cleanup_html_text, select
+from amazonorders.util import to_type, cleanup_html_text, select, select_one
 from tests.unittestcase import UnitTestCase
 
 
@@ -71,3 +71,21 @@ class TestUtil(UnitTestCase):
         # THEN the matched tags themselves come back (not their children), in document order
         self.assertEqual(["span", "b"], [t.name for t in tags])
         self.assertEqual(["Rewards balance", "Rewards balance"], [t.text for t in tags])
+
+    def test_select_one_with_text_selector_returns_first_matched_tag(self):
+        # GIVEN sibling rows that share the CSS and differ only in their label text
+        parsed = BeautifulSoup("<ul><li><span class=\"label\">Total</span><p>$1.00</p></li>"
+                               "<li><span class=\"label\">Order Number</span><p>123-1234567-1234567</p></li>"
+                               "<li><span class=\"label\">Receipts</span><p>n/a</p></li></ul>",
+                               self.test_config.bs4_parser)
+
+        # WHEN the text matches a tag other than the first the CSS matches
+        tag = select_one(parsed, Selector("span.label", text="Order Number"))
+
+        # THEN that tag is returned, not None
+        self.assertIsNotNone(tag)
+        self.assertEqual("Order Number", tag.text)
+        self.assertEqual("123-1234567-1234567", tag.find_next_sibling("p").text)
+
+        # WHEN no tag's text matches
+        self.assertIsNone(select_one(parsed, Selector("span.label", text="Subtotal")))

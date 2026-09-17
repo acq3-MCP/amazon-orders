@@ -254,12 +254,7 @@ class AmazonOrders:
                                               next_page_url=None,
                                               page_type="empty_window")
 
-            not_order_history_selectors = [config.selectors.SIGN_IN_FORM_SELECTOR,
-                                           config.selectors.CAPTCHA_1_FORM_SELECTOR,
-                                           config.selectors.ACIC_CHALLENGE_SELECTOR,
-                                           config.selectors.AWS_WAF_CHALLENGE_SCRIPT_SELECTOR] + \
-                list(config.selectors.CAPTCHA_2_FORM_SELECTOR)
-            if util.select_one(parsed, not_order_history_selectors):
+            if util.select_one(parsed, config.selectors.AUTH_CHALLENGE_PAGE_SELECTORS):
                 return OrderHistoryPageResult(orders=[],
                                               header_count=header_count,
                                               next_page_url=None,
