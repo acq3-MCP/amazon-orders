@@ -13,6 +13,10 @@ from amazonorders.selectors import Selector
 
 logger = logging.getLogger(__name__)
 
+#: Matches an Amazon Order number anywhere in a string: physical (``111-1234567-1234567``) and
+#: digital (``D01-1234567-1234567``) IDs alike.
+ORDER_NUMBER_REGEX = re.compile(r"((?:\d{3}|[A-Z]\d{2})-\d{7}-\d{7})")
+
 
 class AmazonSessionResponse:
     """
@@ -85,9 +89,12 @@ def select_one(parsed: Tag,
         tag: Optional[Tag] = None
 
         if isinstance(s, Selector):
-            t = parsed.select_one(s.css_selector)
-            if t and _selector_text_matches(t, s):
-                tag = t
+            # The first tag whose text matches, not the first tag the CSS matches: sibling rows
+            # (label/value lists, status lines) share the CSS and differ only in their text
+            for t in parsed.select(s.css_selector):
+                if t and _selector_text_matches(t, s):
+                    tag = t
+                    break
         elif isinstance(s, str):
             tag = parsed.select_one(s)
         else:
