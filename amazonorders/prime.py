@@ -29,9 +29,8 @@ class PrimePaymentsPageResult:
         #: What the page is: ``payments`` (payment cards were parsed), ``empty`` (the payment history
         #: widget rendered with no cards), ``not_prime_payments`` (a sign-in, Captcha, or challenge
         #: page; the supplied HTML is not the Prime payments page at all), or ``error`` (Membership
-        #: Central's own error page, served with a 200 in place of the widget; observed when the
-        #: service refuses a non-browser client, so the page is unavailable to this fetch rather than
-        #: changed).
+        #: Central's own error page, served with a 200 in place of the widget when the service refuses
+        #: a non-browser client, so the page is unavailable to this client rather than changed).
         self.page_type: str = page_type
 
     def __repr__(self) -> str:
@@ -89,11 +88,13 @@ class AmazonPrime:
     :class:`~amazonorders.entity.prime_payment.PrimePayment` carries the charge date, total, and
     Order number; the Order itself is fetched with :func:`~amazonorders.orders.AmazonOrders.get_order`.
 
-    Membership Central has been observed refusing this library's client: a fully authenticated
-    session that had just read the Order history and digital Orders received Membership Central's
-    own error page (a 200, no redirect) at the payments route, while a browser on the same account
-    received the payments. When :func:`get_prime_payments` reports that, fetch the page in a browser
-    and parse it with :func:`parse_prime_payments_page` instead.
+    Membership Central refuses this library's client. A fully authenticated session that had just
+    read the Order history and digital Orders received Membership Central's own error page (a 200,
+    no redirect) at the payments route, from a datacenter address and from a residential one alike,
+    while a browser on the same account received the payments; so the refusal keys on the client,
+    not the network. :func:`get_prime_payments` is therefore best-effort and raises a distinct error
+    for that page. The reliable path is to fetch the page in a browser and parse it with
+    :func:`parse_prime_payments_page`.
     """
 
     def __init__(self,
@@ -119,8 +120,9 @@ class AmazonPrime:
         """
         Get every charge in the Prime membership payment history, newest first as the page lists them.
 
-        Raises :class:`~amazonorders.exception.AmazonOrdersError` naming Membership Central's error page
-        when the service serves that in place of the payments (see the class docs); the page fetched in a
+        Best-effort: Membership Central has refused this library's client from both datacenter and
+        residential addresses (see the class docs), in which case this raises an
+        :class:`~amazonorders.exception.AmazonOrdersError` naming its error page. The page fetched in a
         browser still parses with :func:`parse_prime_payments_page`.
 
         :return: The Prime payments (empty when the page lists none).
@@ -137,8 +139,8 @@ class AmazonPrime:
             raise AmazonOrdersError("Amazon rendered a sign-in or challenge page instead of the Prime payments page.")
         if result.page_type == "error":
             raise AmazonOrdersError("Membership Central returned its error page instead of the Prime payments page. "
-                                    "It has been observed refusing non-browser clients; fetch the page in a browser "
-                                    "and parse it with AmazonPrime.parse_prime_payments_page() instead.")
+                                    "It refuses non-browser clients; fetch the page in a browser and parse it with "
+                                    "AmazonPrime.parse_prime_payments_page() instead.")
 
         return result.payments
 

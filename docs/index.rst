@@ -156,9 +156,10 @@ layout, so it is fetched like any other Order.
 An already-fetched page (for instance, one saved from a browser) can be parsed without a session with
 :func:`~amazonorders.prime.AmazonPrime.parse_prime_payments_page`, whose result's
 :attr:`~amazonorders.prime.PrimePaymentsPageResult.page_type` tells a member with no payments apart from a
-sign-in or challenge page, and from Membership Central's own error page. That error page has been observed
-served to this library's client while a browser on the same account received the payments, so parsing a
-browser-fetched page is the reliable path.
+sign-in or challenge page, and from Membership Central's own error page. Membership Central serves that error
+page to this library's client, from datacenter and residential addresses alike, while a browser on the same
+account receives the payments, so :func:`~amazonorders.prime.AmazonPrime.get_prime_payments` is best-effort and
+parsing a browser-fetched page is the reliable path.
 
 Digital Orders
 --------------

@@ -21,7 +21,7 @@ details and invoice print pages render the standard `div#orderDetails` layout (l
 | --- | --- | --- |
 | `prime-payments.html` | Eight payment cards, November 17 of 2018 through 2025 | Captured, sanitized |
 | `prime-payments-empty.html` | The widget with no cards | Fabricated from the capture by removing the cards — the source account has payments, so the real no-payments rendering is unverified |
-| `prime-payments-error.html` | Membership Central's own error page ("Oops." heading, "there's a problem with this page") served with a 200 in place of the widget | Captured 2026-09-17 server-side, by the library's own client from an AWS Lambda with a fully authenticated session that had just read the Order history; a browser on the same account got the payments. Cut to the `div.a-container.mc-container` error block inside the same page shell, scripts and styles removed, tracking ids zeroed |
+| `prime-payments-error.html` | Membership Central's own error page ("Oops." heading, "there's a problem with this page") served with a 200 in place of the widget | Captured 2026-09-17 server-side, by the library's own client from an AWS Lambda with a fully authenticated session that had just read the Order history; a browser on the same account got the payments; the same client from a residential address got the same error page. Cut to the `div.a-container.mc-container` error block inside the same page shell, scripts and styles removed, tracking ids zeroed |
 
 Sanitization applied (the widget markup is otherwise byte-accurate to the capture):
 
