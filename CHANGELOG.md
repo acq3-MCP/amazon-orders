@@ -6,6 +6,11 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased](https://github.com/alexdlaird/amazon-orders/compare/4.6.0...HEAD)
 
+### Fixed
+
+- `util.select_one()` given a text-matched `Selector` now returns the first tag whose text matches; it previously tested only the first tag the CSS matched and returned `None` for any later match.
+- `util.select()` given a text-matched `Selector` now returns the matched tags themselves; it previously extended the result with each matched tag's children.
+
 ## [4.6.0](https://github.com/alexdlaird/amazon-orders/compare/4.5.0...4.6.0) - 2026-09-10
 
 ### Added
