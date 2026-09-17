@@ -331,3 +331,8 @@ class Selectors:
                                                            text="Receipts")
     FIELD_PRIME_PAYMENT_VALUE_SELECTOR = "p"
     FIELD_PRIME_PAYMENT_RECEIPT_LINK_SELECTOR = "a[href]"
+
+    # Membership Central's own error page, served with a 200 at the payments route in place of the
+    # widget for the library's client, from datacenter and residential addresses alike, while the same
+    # session read the retail pages fine: an "Oops." heading over "there's a problem with this page"
+    PRIME_PAYMENTS_ERROR_SELECTOR = Selector("h1.a-text-bold", text_contains="Oops.")

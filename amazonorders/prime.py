@@ -27,8 +27,10 @@ class PrimePaymentsPageResult:
         #: The payments on the page, newest first as the page lists them.
         self.payments: List[PrimePayment] = payments
         #: What the page is: ``payments`` (payment cards were parsed), ``empty`` (the payment history
-        #: widget rendered with no cards), or ``not_prime_payments`` (a sign-in, Captcha, or challenge
-        #: page; the supplied HTML is not the Prime payments page at all).
+        #: widget rendered with no cards), ``not_prime_payments`` (a sign-in, Captcha, or challenge
+        #: page; the supplied HTML is not the Prime payments page at all), or ``error`` (Membership
+        #: Central's own error page, served with a 200 in place of the widget when the service refuses
+        #: a non-browser client, so the page is unavailable to this client rather than changed).
         self.page_type: str = page_type
 
     def __repr__(self) -> str:
@@ -43,8 +45,9 @@ def _parse_prime_payments_page(parsed: Tag,
     """
     Classify a parsed Prime payments page and parse its payment cards.
 
-    A page with no payment history widget that is not a recognizable sign-in or challenge page
-    raises, since that is a page that failed to render rather than a member with no payments. If
+    A page with no payment history widget that is neither a recognizable sign-in or challenge page
+    nor Membership Central's error page raises, since that is a page that failed to render rather
+    than a member with no payments. If
     a card fails to parse, the raised exception's :attr:`~amazonorders.exception.AmazonOrdersError.meta`
     carries ``partial_payments`` (the payments parsed before the failure).
 
@@ -57,6 +60,9 @@ def _parse_prime_payments_page(parsed: Tag,
     if widget_tag is None:
         if util.select_one(parsed, config.selectors.AUTH_CHALLENGE_PAGE_SELECTORS):
             return PrimePaymentsPageResult(payments=[], page_type="not_prime_payments")
+
+        if util.select_one(parsed, config.selectors.PRIME_PAYMENTS_ERROR_SELECTOR):
+            return PrimePaymentsPageResult(payments=[], page_type="error")
 
         raise AmazonOrdersError("Could not parse Prime payments. Check if Amazon changed the HTML.")
 
@@ -81,6 +87,14 @@ class AmazonPrime:
     Digital Orders tab lists; the Prime payments page is the only listing of them. Each
     :class:`~amazonorders.entity.prime_payment.PrimePayment` carries the charge date, total, and
     Order number; the Order itself is fetched with :func:`~amazonorders.orders.AmazonOrders.get_order`.
+
+    Membership Central refuses this library's client. A fully authenticated session that had just
+    read the Order history and digital Orders received Membership Central's own error page (a 200,
+    no redirect) at the payments route, from a datacenter address and from a residential one alike,
+    while a browser on the same account received the payments; so the refusal keys on the client,
+    not the network. :func:`get_prime_payments` is therefore best-effort and raises a distinct error
+    for that page. The reliable path is to fetch the page in a browser and parse it with
+    :func:`parse_prime_payments_page`.
     """
 
     def __init__(self,
@@ -106,6 +120,11 @@ class AmazonPrime:
         """
         Get every charge in the Prime membership payment history, newest first as the page lists them.
 
+        Best-effort: Membership Central has refused this library's client from both datacenter and
+        residential addresses (see the class docs), in which case this raises an
+        :class:`~amazonorders.exception.AmazonOrdersError` naming its error page. The page fetched in a
+        browser still parses with :func:`parse_prime_payments_page`.
+
         :return: The Prime payments (empty when the page lists none).
         """
         if not self.amazon_session.is_authenticated:
@@ -118,6 +137,10 @@ class AmazonPrime:
 
         if result.page_type == "not_prime_payments":
             raise AmazonOrdersError("Amazon rendered a sign-in or challenge page instead of the Prime payments page.")
+        if result.page_type == "error":
+            raise AmazonOrdersError("Membership Central returned its error page instead of the Prime payments page. "
+                                    "It refuses non-browser clients; fetch the page in a browser and parse it with "
+                                    "AmazonPrime.parse_prime_payments_page() instead.")
 
         return result.payments
 
@@ -131,8 +154,9 @@ class AmazonPrime:
         The result's :attr:`~amazonorders.prime.PrimePaymentsPageResult.page_type` distinguishes a
         member with no payments (``empty``, the payment history widget rendered with no cards) from
         a page that is not the Prime payments page at all (``not_prime_payments``: sign-in, Captcha,
-        or challenge pages). A page with neither the widget nor a recognizable challenge raises,
-        since that is a page that failed to render rather than an empty history.
+        or challenge pages) and from Membership Central's own error page (``error``, served with a
+        200 in place of the widget). A page with none of the widget, a recognizable challenge, or the
+        error marker raises, since that is a page that failed to render rather than an empty history.
 
         If a card fails to parse, the raised exception's
         :attr:`~amazonorders.exception.AmazonOrdersError.meta` carries ``partial_payments`` (the

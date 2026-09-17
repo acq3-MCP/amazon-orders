@@ -127,6 +127,21 @@ class TestPrime(UnitTestCase):
         self.assertIn("sign-in or challenge page", str(cm.exception))
 
     @responses.activate
+    def test_get_prime_payments_error_page(self):
+        # GIVEN Membership Central serves its own error page (a 200, no redirect) in place of the widget
+        self.amazon_session.is_authenticated = True
+        resp = self._given_prime_payments_page_exists("prime-payments-error.html")
+
+        # WHEN
+        with self.assertRaises(AmazonOrdersError) as cm:
+            self.amazon_prime.get_prime_payments()
+
+        # THEN the error names the service refusal, not a parser break
+        self.assertEqual(1, resp.call_count)
+        self.assertIn("Membership Central returned its error page", str(cm.exception))
+        self.assertNotIn("changed the HTML", str(cm.exception))
+
+    @responses.activate
     def test_get_prime_payments_invalid_page(self):
         # GIVEN
         self.amazon_session.is_authenticated = True
@@ -182,6 +197,15 @@ class TestPrime(UnitTestCase):
                 # THEN
                 self.assertEqual("not_prime_payments", result.page_type)
                 self.assertEqual([], result.payments)
+
+    def test_parse_prime_payments_page_error(self):
+        # WHEN
+        result = AmazonPrime.parse_prime_payments_page(self._read_resource("prime-payments-error.html"),
+                                                       self.test_config)
+
+        # THEN classified, not raised
+        self.assertEqual("error", result.page_type)
+        self.assertEqual([], result.payments)
 
     def test_parse_prime_payments_page_unrecognized_page(self):
         # GIVEN a page with neither the widget nor a recognizable challenge: a failed render, which
