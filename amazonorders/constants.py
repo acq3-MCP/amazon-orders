@@ -137,6 +137,13 @@ class Constants:
     REWARDS_CARD_URL = f"{BASE_URL}{REWARDS_CARD_ROUTE}"
 
     ##########################################################################
+    # URLs for Prime
+    ##########################################################################
+
+    PRIME_PAYMENTS_ROUTE = "/mc/payments"
+    PRIME_PAYMENTS_URL = f"{BASE_URL}{PRIME_PAYMENTS_ROUTE}"
+
+    ##########################################################################
     # Headers
     ##########################################################################
 
@@ -238,6 +245,7 @@ class Constants:
         self.TRANSACTION_HISTORY_URL = f"{base_url}{self.TRANSACTION_HISTORY_ROUTE}"
         self.GIFT_CARD_BALANCE_URL = f"{base_url}{self.GIFT_CARD_BALANCE_ROUTE}"
         self.REWARDS_CARD_URL = f"{base_url}{self.REWARDS_CARD_ROUTE}"
+        self.PRIME_PAYMENTS_URL = f"{base_url}{self.PRIME_PAYMENTS_ROUTE}"
 
         host = urlparse(base_url).netloc.lower().split(":")[0]
         if host.startswith("www."):

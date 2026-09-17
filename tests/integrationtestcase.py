@@ -10,6 +10,7 @@ from amazonorders.conf import AmazonOrdersConfig
 from amazonorders.digital_orders import AmazonDigitalOrders
 from amazonorders.gift_cards import AmazonGiftCards
 from amazonorders.orders import AmazonOrders
+from amazonorders.prime import AmazonPrime
 from amazonorders.rewards import AmazonRewards
 from amazonorders.session import AmazonSession
 from amazonorders.transactions import AmazonTransactions
@@ -42,6 +43,7 @@ class IntegrationTestCase(TestCase):
         cls.amazon_gift_cards = AmazonGiftCards(cls.amazon_session)
         cls.amazon_digital_orders = AmazonDigitalOrders(cls.amazon_session)
         cls.amazon_rewards = AmazonRewards(cls.amazon_session)
+        cls.amazon_prime = AmazonPrime(cls.amazon_session)
 
     @classmethod
     def tearDownClass(cls):

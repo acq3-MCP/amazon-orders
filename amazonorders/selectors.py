@@ -67,6 +67,14 @@ class Selectors:
     CAPTCHA_1_ERROR_SELECTOR = "div.cvf-widget-alert"
     CAPTCHA_2_ERROR_SELECTOR = "div.a-alert-info"
 
+    # The pages Amazon renders in place of the one requested when the session has expired or
+    # is being challenged (sign-in, Captcha, and challenge pages). Parsers of already-fetched
+    # HTML check these to tell such a page apart from a genuinely empty one.
+    AUTH_CHALLENGE_PAGE_SELECTORS = [SIGN_IN_FORM_SELECTOR,
+                                     CAPTCHA_1_FORM_SELECTOR,
+                                     ACIC_CHALLENGE_SELECTOR,
+                                     AWS_WAF_CHALLENGE_SCRIPT_SELECTOR] + CAPTCHA_2_FORM_SELECTOR
+
     ##########################################################################
     # CSS selectors for pagination
     ##########################################################################
@@ -297,3 +305,29 @@ class Selectors:
     #####################################
 
     REWARDS_NEXT_DATA_SELECTOR = "script#__NEXT_DATA__"
+
+    #####################################
+    # CSS selectors for Prime
+    #
+    # The Prime membership payment history (/mc/payments) is a Membership
+    # Central page whose payment cards are server-rendered: one a-cardui
+    # per membership charge, the charge date in the card header, and
+    # label/value rows ("Total", "Order Number", "Receipts") in the body.
+    # The cards also carry build-hashed classes (_cHJpb_…) that change
+    # between deployments, so selection anchors on the widget id, the
+    # a-cardui framework classes, and the visible row labels instead.
+    #####################################
+
+    PRIME_PAYMENTS_WIDGET_SELECTOR = "div[cel_widget_id^='prime-payment-history_']"
+    PRIME_PAYMENT_SELECTOR = "div.a-cardui"
+
+    FIELD_PRIME_PAYMENT_DATE_SELECTOR = "div.a-cardui-header h3"
+    # Each body row is a label span followed by its value; the label selectors match the span, and
+    # the value is read from the row (the label's parent) with the value selector
+    FIELD_PRIME_PAYMENT_TOTAL_LABEL_SELECTOR = Selector("div.a-cardui-body span.a-color-tertiary", text="Total")
+    FIELD_PRIME_PAYMENT_ORDER_NUMBER_LABEL_SELECTOR = Selector("div.a-cardui-body span.a-color-tertiary",
+                                                               text="Order Number")
+    FIELD_PRIME_PAYMENT_RECEIPTS_LABEL_SELECTOR = Selector("div.a-cardui-body span.a-color-tertiary",
+                                                           text="Receipts")
+    FIELD_PRIME_PAYMENT_VALUE_SELECTOR = "p"
+    FIELD_PRIME_PAYMENT_RECEIPT_LINK_SELECTOR = "a[href]"

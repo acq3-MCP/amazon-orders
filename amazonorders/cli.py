@@ -19,6 +19,7 @@ from amazonorders.digital_orders import AmazonDigitalOrders
 from amazonorders.exception import AmazonOrdersError, AmazonOrdersAuthError, AmazonOrdersAuthRedirectError
 from amazonorders.gift_cards import AmazonGiftCards
 from amazonorders.orders import AmazonOrders
+from amazonorders.prime import AmazonPrime
 from amazonorders.rewards import AmazonRewards
 from amazonorders.output import OutputFormatter
 from amazonorders.session import AmazonSession, IODefault
@@ -482,6 +483,36 @@ def rewards_balance(ctx: Context, **kwargs: Any) -> None:
                                        config=config)
 
         click.echo(config.output_cls(config).format(amazon_rewards.get_rewards_balances(), kwargs["output"]))
+    except AmazonOrdersAuthRedirectError:
+        _prompt_to_reauth_flow()
+    except AmazonOrdersError as e:
+        logger.debug("An error occurred.", exc_info=True)
+        ctx.fail(str(e))
+
+
+@amazon_orders_cli.command()
+@click.pass_context
+@click.option("-o", "--output", type=click.Choice(OutputFormatter.OUTPUT_FORMATS), default="text",
+              help="The output format. Defaults to text.")
+def prime_payments(ctx: Context, **kwargs: Any) -> None:
+    """
+    Get the Prime membership payment history (the membership fee charges, which are digital
+    Orders that neither the Order history nor the digital-orders command lists).
+    """
+    amazon_session = ctx.obj["amazon_session"]
+
+    try:
+        _authenticate(amazon_session)
+
+        config = ctx.obj["conf"]
+        amazon_prime = AmazonPrime(amazon_session,
+                                   config=config)
+
+        payments = amazon_prime.get_prime_payments()
+
+        click.echo(config.output_cls(config).format(payments, kwargs["output"]))
+
+        click.echo(f"... {len(payments)} Prime payments parsed.\n", err=True)
     except AmazonOrdersAuthRedirectError:
         _prompt_to_reauth_flow()
     except AmazonOrdersError as e:

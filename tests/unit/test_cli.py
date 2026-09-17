@@ -701,6 +701,70 @@ class TestCli(UnitTestCase):
         self.assertIn("26 Gift Card activity entries parsed", response.output)
 
     @responses.activate
+    def test_prime_payments_command(self):
+        # GIVEN
+        self.given_unauthenticated_home_page()
+        self.given_login_responses_success()
+        with open(os.path.join(self.RESOURCES_DIR, "prime", "prime-payments.html"), "r",
+                  encoding="utf-8") as f:
+            resp = responses.add(
+                responses.GET,
+                f"{self.test_config.constants.PRIME_PAYMENTS_URL}",
+                body=f.read(),
+                status=200,
+            )
+
+        # WHEN
+        response = self.runner.invoke(amazon_orders_cli,
+                                      [
+                                          "--config-path", self.test_config.config_path,
+                                          "--username", "some-username@gmail.com",
+                                          "--password", "some-password",
+                                          "prime-payments"
+                                      ])
+
+        # THEN
+        self.assertEqual(0, response.exit_code)
+        self.assert_login_responses_success()
+        self.assertEqual(1, resp.call_count)
+        self.assertIn("Prime Payment 2025-11-17: $148.38", response.output)
+        self.assertIn("Order #: D01-1000008-2000008", response.output)
+        self.assertIn("Receipt: https://www.amazon.com/gp/digital/your-account/order-summary.html", response.output)
+        self.assertIn("Prime Payment 2018-11-17: $127.78", response.output)
+        self.assertIn("8 Prime payments parsed", response.output)
+
+    @responses.activate
+    def test_prime_payments_command_output_json(self):
+        # GIVEN
+        self.given_unauthenticated_home_page()
+        self.given_login_responses_success()
+        with open(os.path.join(self.RESOURCES_DIR, "prime", "prime-payments.html"), "r",
+                  encoding="utf-8") as f:
+            responses.add(
+                responses.GET,
+                f"{self.test_config.constants.PRIME_PAYMENTS_URL}",
+                body=f.read(),
+                status=200,
+            )
+
+        # WHEN
+        response = self.given_runner_with_split_streams().invoke(amazon_orders_cli,
+                                                                 [
+                                                                     "--config-path", self.test_config.config_path,
+                                                                     "--username", "some-username@gmail.com",
+                                                                     "--password", "some-password",
+                                                                     "prime-payments", "--output", "json"])
+
+        # THEN
+        self.assertEqual(0, response.exit_code)
+        payments = json.loads(response.stdout)
+        self.assertEqual(8, len(payments))
+        self.assertEqual("2025-11-17", payments[0]["payment_date"])
+        self.assertEqual(148.38, payments[0]["total"])
+        self.assertEqual("D01-1000008-2000008", payments[0]["order_number"])
+        self.assertNotIn("parsed", payments[0])
+
+    @responses.activate
     def test_rewards_balance_command(self):
         # GIVEN
         self.given_unauthenticated_home_page()
