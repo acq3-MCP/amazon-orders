@@ -38,6 +38,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Fixed
 
+- `Order.cancelled` is now detected on the current order-details layout, which renders a cancellation as the shipment-status heading ("Cancelled" over "Your order was cancelled …") with no alert box and no totals; `ORDER_SKIP_TOTALS` only knew the alert-box rendering, so such a page failed on the required `grand_total` (or, under `warn_on_missing_required_field`, read as a not-cancelled order with no total). Observed on seller-cancelled and buyer-cancelled orders alike, including multi-item ones, which the layout renders as one cancelled shipment.
 - `Transaction.order_number` now parses digital (`D01-…`) Order IDs on the transactions page; the ID regex accepted digits and hyphens only, so a digital row silently came back with an empty Order number. A row whose Order text carries no Order number now yields `None` and logs a warning instead of an empty string.
 - `GiftCardActivity.order_number` now resolves digital (`D01-…`) Order IDs — ledger rows anchored to digital orders previously lost their Order reference entirely.
 - Row-level parse failures during `get_gift_card_activity()` pagination now carry the documented resume metadata (`next_page_url`, `partial_activity`) instead of raising without `meta`.
