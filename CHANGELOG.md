@@ -6,6 +6,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased](https://github.com/alexdlaird/amazon-orders/compare/4.6.0...HEAD)
 
+### Fixed
+
+- `Order.cancelled` is now detected on the current order-details layout, which renders a cancellation as the shipment-status heading with no alert box and no totals; such a page previously failed on the required `grand_total` (or, under `warn_on_missing_required_field`, read as a not-cancelled order with no total).
+
 ## [4.6.0](https://github.com/alexdlaird/amazon-orders/compare/4.5.0...4.6.0) - 2026-09-10
 
 ### Added
