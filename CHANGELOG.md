@@ -38,6 +38,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Fixed
 
+- `Transaction.order_number` now parses digital (`D01-…`) Order IDs on the transactions page; the ID regex accepted digits and hyphens only, so a digital row silently came back with an empty Order number. A row whose Order text carries no Order number now yields `None` and logs a warning instead of an empty string.
 - `GiftCardActivity.order_number` now resolves digital (`D01-…`) Order IDs — ledger rows anchored to digital orders previously lost their Order reference entirely.
 - Row-level parse failures during `get_gift_card_activity()` pagination now carry the documented resume metadata (`next_page_url`, `partial_activity`) instead of raising without `meta`.
 - `AmazonOrders.last_history_pull` is no longer populated when a `full_details` pull fails mid-fetch, honoring its stays-`None`-on-failure contract.
