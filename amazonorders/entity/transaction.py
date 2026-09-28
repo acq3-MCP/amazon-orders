@@ -44,10 +44,8 @@ class Transaction(Parsable):
         self.order_number: Optional[str] = self.safe_parse(self._parse_order_number)
         #: The Transaction Order details link.
         self.order_details_link: str = self.safe_parse(self._parse_order_details_link)
-        #: The Transaction seller name.
-        self.seller: str = self.safe_simple_parse(
-            selector=self.config.selectors.FIELD_TRANSACTION_SELLER_NAME_SELECTOR
-        )
+        #: The Transaction seller name, or ``None`` when the row carries none.
+        self.seller: Optional[str] = self.safe_parse(self._parse_seller)
 
     def __repr__(self) -> str:
         return f"<Transaction {self.completed_date}: \"Order #{self.order_number}, Grand Total: {self.grand_total}\">"
@@ -91,6 +89,15 @@ class Transaction(Parsable):
             return None
 
         return match.group(1)
+
+    def _parse_seller(self) -> Optional[str]:
+        value = self.simple_parse(self.config.selectors.FIELD_TRANSACTION_SELLER_NAME_SELECTOR)
+
+        # A digital row repeats the Order ID in the seller cell
+        if value and value == self.order_number:
+            return None
+
+        return value
 
     def _parse_order_details_link(self) -> Optional[str]:
         value = self.simple_parse(self.config.selectors.FIELD_TRANSACTION_ORDER_LINK_SELECTOR, attr_name="href")
