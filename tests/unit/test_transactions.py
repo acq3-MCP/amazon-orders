@@ -138,8 +138,7 @@ class TestTransactions(UnitTestCase):
         self.assertEqual("D01-1234567-1234567", digital.order_number)
         self.assertEqual("https://www.amazon.com/gp/css/order-details?orderID=D01-1234567-1234567",
                          digital.order_details_link)
-        # Amazon prints the ID in the seller cell of a digital row; that is the markup, not a parse error
-        self.assertEqual("D01-1234567-1234567", digital.seller)
+        self.assertIsNone(digital.seller)
         self.assertEqual("111-1234567-1234567", physical.order_number)
         self.assertEqual("AMZN Mktp US", physical.seller)
 
