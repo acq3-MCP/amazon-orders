@@ -3,6 +3,7 @@ __license__ = "MIT"
 
 import logging
 from typing import List, Optional, Tuple
+from urllib.parse import parse_qs, urlparse
 
 from bs4 import BeautifulSoup, Tag
 
@@ -37,8 +38,8 @@ class WishListPageResult:
         #: The items the page rendered, in page order: :attr:`wish_list`'s items on a list page, or the
         #: items of an items batch.
         self.items: List[WishListItem] = wish_list.items if wish_list is not None and wish_list.items else []
-        #: The absolute URL of the "See More" control, which serves the next batch of items. ``None`` when the
-        #: page rendered no such control, which is the end of the list.
+        #: The absolute URL of the "See More" control, which serves the next batch of items. ``None`` at the end
+        #: of the list (the last batch renders an end-of-list marker in place of the control).
         self.next_page_url: Optional[str] = next_page_url
         #: What the page is: ``wish_list`` (a list page, with its nav, header, and first batch of items),
         #: ``items`` (a batch of items with no nav or header, as the "See More" control serves), or
@@ -98,18 +99,46 @@ def _parse_items(parsed: Tag,
             e.meta = {**{"partial_items": items}, **(e.meta or {})}
             raise
 
+    return items, _parse_next_page_url(parsed, config)
+
+
+def _parse_next_page_url(parsed: Tag,
+                         config: AmazonOrdersConfig) -> Optional[str]:
+    """
+    Find the URL of the next batch of items, or ``None`` at the end of the list.
+
+    The end is the end-of-list marker the last batch renders in place of a "See More" control. Short
+    of it, the control's no-JS anchor carries the URL, and failing that its JS twin, the last
+    ``showMoreUrl`` input (a scrolled page keeps one per batch loaded, so the first is stale); an
+    input whose URL carries an empty pagination token is the last batch's and also means the end.
+
+    :param parsed: The parsed page or batch.
+    :param config: The config to use.
+    :return: The absolute URL of the next batch, or ``None`` at the end of the list.
+    """
+    if util.select_one(parsed, config.selectors.WISH_LIST_END_OF_LIST_SELECTOR) is not None:
+        return None
+
     next_page_url = None
     link_tag = util.select_one(parsed, config.selectors.WISH_LIST_NEXT_PAGE_LINK_SELECTOR)
     if link_tag is not None and link_tag.get("href"):
         next_page_url = str(link_tag["href"])
     else:
-        input_tag = util.select_one(parsed, config.selectors.WISH_LIST_NEXT_PAGE_INPUT_SELECTOR)
-        if input_tag is not None and input_tag.get("value"):
-            next_page_url = str(input_tag["value"])
-    if next_page_url and not next_page_url.startswith("http"):
+        input_tags = util.select(parsed, config.selectors.WISH_LIST_NEXT_PAGE_INPUT_SELECTOR)
+        if input_tags and input_tags[-1].get("value"):
+            next_page_url = str(input_tags[-1]["value"])
+
+    if not next_page_url:
+        return None
+
+    query = parse_qs(urlparse(next_page_url).query, keep_blank_values=True)
+    if "paginationToken" in query and not any(query["paginationToken"]):
+        return None
+
+    if not next_page_url.startswith("http"):
         next_page_url = f"{config.constants.BASE_URL}{next_page_url}"
 
-    return items, next_page_url
+    return next_page_url
 
 
 def _parse_wish_list_page(parsed: Tag,

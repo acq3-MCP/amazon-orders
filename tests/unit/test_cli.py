@@ -802,7 +802,7 @@ class TestCli(UnitTestCase):
         # GIVEN
         self.given_unauthenticated_home_page()
         self.given_login_responses_success()
-        with open(os.path.join(self.RESOURCES_DIR, "lists", "wish-list-shared-last-page.html"), "r",
+        with open(os.path.join(self.RESOURCES_DIR, "lists", "wish-list-shared-scrolled.html"), "r",
                   encoding="utf-8") as f:
             resp = responses.add(
                 responses.GET,
@@ -826,21 +826,21 @@ class TestCli(UnitTestCase):
         self.assertEqual(1, resp.call_count)
         self.assertIn("List 1CCCCCCCCCCCC: Household (shared) (Private, Collaborative)", response.output)
         self.assertIn("Members: Jane Doe (owner), John Doe", response.output)
-        self.assertIn("Items: 10, showing all", response.output)
+        self.assertIn("Items: 22, showing all", response.output)
         self.assertIn("Price: $5.64 - $5.94", response.output)
         self.assertIn("Needs: 1, Has: 0", response.output)
         self.assertIn("Added: 2026-09-24", response.output)
         self.assertIn("Purchased: 2026-09-24", response.output)
         self.assertIn("Link: https://www.amazon.com/dp/B0C1G62PNP/?coliid=IB096Y9Q2RVX9&colid=1CCCCCCCCCCCC",
                       response.output)
-        self.assertIn("10 List items parsed", response.output)
+        self.assertIn("22 List items parsed", response.output)
 
     @responses.activate
     def test_wish_list_command_output_json(self):
         # GIVEN
         self.given_unauthenticated_home_page()
         self.given_login_responses_success()
-        with open(os.path.join(self.RESOURCES_DIR, "lists", "wish-list-shared-last-page.html"), "r",
+        with open(os.path.join(self.RESOURCES_DIR, "lists", "wish-list-shared-scrolled.html"), "r",
                   encoding="utf-8") as f:
             responses.add(
                 responses.GET,
@@ -863,7 +863,7 @@ class TestCli(UnitTestCase):
         lists = json.loads(response.stdout)
         self.assertEqual(1, len(lists))
         self.assertEqual("1CCCCCCCCCCCC", lists[0]["list_id"])
-        self.assertEqual(10, len(lists[0]["items"]))
+        self.assertEqual(22, len(lists[0]["items"]))
         self.assertEqual("B0C1G62PNP", lists[0]["items"][0]["asin"])
         self.assertFalse(lists[0]["items"][0]["purchased"])
         self.assertNotIn("parsed", lists[0])

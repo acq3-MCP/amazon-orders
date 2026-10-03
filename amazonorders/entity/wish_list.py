@@ -142,10 +142,12 @@ class WishList(Parsable):
             if name_tag is not None and name_tag.text.strip():
                 self.name = re.sub(r"\s+", " ", name_tag.text).strip()
 
-            row_tags = util.select(header_tag, self.config.selectors.WISH_LIST_COLLABORATOR_ROW_SELECTOR)
-            self.collaborators = [WishListCollaborator(row_tag, self.config) for row_tag in row_tags]
-            if self.collaborators:
-                self.is_collaborative = True
+        # The member rows sit in the header's "List members" popover as served, but the live DOM moves the
+        # popover to a modal at the end of the body, so a DOM capture holds them outside the header
+        row_tags = util.select(page, self.config.selectors.WISH_LIST_COLLABORATOR_ROW_SELECTOR)
+        self.collaborators = [WishListCollaborator(row_tag, self.config) for row_tag in row_tags]
+        if self.collaborators:
+            self.is_collaborative = True
 
         filter_tag = util.select_one(page, self.config.selectors.FIELD_WISH_LIST_FILTER_SELECTOR)
         self.items_filter = str(filter_tag.get("value") or "").strip() or None if filter_tag is not None else None

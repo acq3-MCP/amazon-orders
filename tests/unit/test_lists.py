@@ -163,13 +163,13 @@ class TestLists(UnitTestCase):
 
     @responses.activate
     def test_get_list(self):
-        # GIVEN a collaborative list whose page renders ten items and a "See More" batch of ten more
+        # GIVEN a collaborative list whose page renders ten items and whose "See More" serves the last batch
         self.amazon_session.is_authenticated = True
         page_resp = self._given_list_page_exists(SHARED_LIST_ID, "wish-list-shared.html")
         batch_resp = responses.add(
             responses.GET,
             NEXT_PAGE_URL,
-            body=self._read_resource("wish-list-shared-last-page.html"),
+            body=self._read_resource("wish-list-shared-batch-last.html"),
             status=200,
         )
 
@@ -190,13 +190,14 @@ class TestLists(UnitTestCase):
         self.assertEqual([True, False], [c.is_owner for c in wish_list.collaborators])
         self.assertEqual("amzn1.account.AAAAAAAAAAAAAAAAAAAAAAAAAAAA", wish_list.collaborators[0].profile_id)
         self.assertEqual("<WishListCollaborator \"Jane Doe\" (owner)>", repr(wish_list.collaborators[0]))
-        self.assertEqual(20, len(wish_list.items))
+        self.assertEqual(12, len(wish_list.items))
         self.assertEqual("IB096Y9Q2RVX9", wish_list.items[0].item_id)
-        self.assertEqual("IB096Y9Q2RVX9", wish_list.items[10].item_id)
+        self.assertEqual(["I59IY3H8KA5H5", "I5SPXECT3404O"], [item.item_id for item in wish_list.items[10:]])
+        self.assertEqual(datetime.date(2026, 5, 12), wish_list.items[11].purchased_date)
         self.assertEqual(2, self.amazon_lists.last_list_pull.pages_walked)
-        self.assertEqual(20, self.amazon_lists.last_list_pull.items_parsed)
+        self.assertEqual(12, self.amazon_lists.last_list_pull.items_parsed)
         self.assertEqual("no_more_pages", self.amazon_lists.last_list_pull.stop_reason)
-        self.assertEqual("<WishListPullResult: 2 pages, 20 items, \"no_more_pages\">",
+        self.assertEqual("<WishListPullResult: 2 pages, 12 items, \"no_more_pages\">",
                          repr(self.amazon_lists.last_list_pull))
 
     @responses.activate
@@ -218,23 +219,26 @@ class TestLists(UnitTestCase):
 
     @responses.activate
     def test_get_list_resume(self):
-        # GIVEN a previous pull stopped at the second batch
+        # GIVEN a previous pull stopped at a later batch than the list page's "See More" serves
         self.amazon_session.is_authenticated = True
-        page_resp = self._given_list_page_exists(SHARED_LIST_ID, "wish-list-shared-last-page.html")
+        page_resp = self._given_list_page_exists(SHARED_LIST_ID, "wish-list-shared.html")
+        resume_url = NEXT_PAGE_URL.replace("TOKEN_PAGE_2", "TOKEN_PAGE_3")
+        skipped_resp = responses.add(responses.GET, NEXT_PAGE_URL, body="", status=200)
         batch_resp = responses.add(
             responses.GET,
-            NEXT_PAGE_URL,
-            body=self._read_resource("wish-list-shared-last-page.html"),
+            resume_url,
+            body=self._read_resource("wish-list-shared-batch-last.html"),
             status=200,
         )
 
         # WHEN
-        wish_list = self.amazon_lists.get_list(SHARED_LIST_ID, next_page_url=NEXT_PAGE_URL)
+        wish_list = self.amazon_lists.get_list(SHARED_LIST_ID, next_page_url=resume_url)
 
-        # THEN the given URL is followed even though the list page rendered no "See More" control
+        # THEN the given URL is followed in place of the list page's own
         self.assertEqual(1, page_resp.call_count)
+        self.assertEqual(0, skipped_resp.call_count)
         self.assertEqual(1, batch_resp.call_count)
-        self.assertEqual(20, len(wish_list.items))
+        self.assertEqual(12, len(wish_list.items))
 
     @responses.activate
     def test_get_list_empty(self):
@@ -291,8 +295,8 @@ class TestLists(UnitTestCase):
         # GIVEN the "See More" batch's second item has no title
         self.amazon_session.is_authenticated = True
         self._given_list_page_exists(SHARED_LIST_ID, "wish-list-shared.html")
-        batch_html = self._read_resource("wish-list-shared-last-page.html")
-        batch_html = batch_html.replace("id=\"itemName_I3W1WERO0RFQBJ\"", "id=\"broken\"")
+        batch_html = self._read_resource("wish-list-shared-batch-last.html")
+        batch_html = batch_html.replace("id=\"itemName_I5SPXECT3404O\"", "id=\"broken\"")
         responses.add(responses.GET, NEXT_PAGE_URL, body=batch_html, status=200)
 
         # WHEN
@@ -318,15 +322,59 @@ class TestLists(UnitTestCase):
         self.assertEqual(NEXT_PAGE_URL, result.next_page_url)
         self.assertEqual("<WishListPageResult: \"wish_list\", 6 lists, 10 items>", repr(result))
 
-    def test_parse_wish_list_page_last_page(self):
-        # WHEN
-        result = AmazonLists.parse_wish_list_page(self._read_resource("wish-list-shared-last-page.html"),
+    def test_parse_wish_list_page_scrolled_to_end(self):
+        # GIVEN the live DOM of the list scrolled to its end: every batch appended (each with its own
+        # scroll-state form, so three showMoreUrl inputs, the first two stale), the end-of-list marker, and
+        # the "List members" popover moved out of the header to a modal at the end of the body
+        result = AmazonLists.parse_wish_list_page(self._read_resource("wish-list-shared-scrolled.html"),
                                                   self.test_config)
 
-        # THEN no "See More" control is the end of the list
+        # THEN every item, no next batch, and the members still found
         self.assertEqual("wish_list", result.page_type)
-        self.assertEqual(10, len(result.items))
+        self.assertEqual(22, len(result.items))
+        self.assertEqual("IB096Y9Q2RVX9", result.items[0].item_id)
+        self.assertEqual("I5SPXECT3404O", result.items[-1].item_id)
+        self.assertEqual(21, len([item for item in result.items if item.purchased]))
         self.assertIsNone(result.next_page_url)
+        self.assertEqual(["Jane Doe", "John Doe"], [c.name for c in result.wish_list.collaborators])
+        self.assertTrue(result.wish_list.is_collaborative)
+
+    def test_parse_wish_list_page_last_batch(self):
+        # GIVEN the last batch the "See More" control serves: two items, a scroll-state form whose
+        # pagination token is empty, and the end-of-list marker in place of another control
+        result = AmazonLists.parse_wish_list_page(self._read_resource("wish-list-shared-batch-last.html"),
+                                                  self.test_config)
+
+        # THEN
+        self.assertEqual("items", result.page_type)
+        self.assertIsNone(result.wish_list)
+        self.assertEqual(["I59IY3H8KA5H5", "I5SPXECT3404O"], [item.item_id for item in result.items])
+        self.assertIsNone(result.next_page_url)
+
+    def test_parse_wish_list_page_empty_pagination_token(self):
+        # GIVEN a batch with no end-of-list marker whose only showMoreUrl carries an empty token
+        parsed = BeautifulSoup(self._read_resource("wish-list-shared-batch-last.html"), self.test_config.bs4_parser)
+        parsed.select_one("div#endOfListMarker").decompose()
+
+        # WHEN
+        result = AmazonLists.parse_wish_list_page(str(parsed), self.test_config)
+
+        # THEN the empty token is the end too
+        self.assertEqual(2, len(result.items))
+        self.assertIsNone(result.next_page_url)
+
+    def test_parse_wish_list_page_last_show_more_input_wins(self):
+        # GIVEN a scrolled page with no marker, whose last scroll-state form carries a live token
+        parsed = BeautifulSoup(self._read_resource("wish-list-shared-scrolled.html"), self.test_config.bs4_parser)
+        parsed.select_one("div#endOfListMarker").decompose()
+        input_tags = parsed.select("input[name='showMoreUrl']")
+        input_tags[-1]["value"] = input_tags[-1]["value"].replace("paginationToken=&", "paginationToken=TOKEN_PAGE_4&")
+
+        # WHEN
+        result = AmazonLists.parse_wish_list_page(str(parsed), self.test_config)
+
+        # THEN the last form's URL is the next batch, not the stale first one
+        self.assertIn("paginationToken=TOKEN_PAGE_4&", result.next_page_url)
 
     def test_parse_wish_list_page_items_batch(self):
         # GIVEN a batch of items with no nav or header, as the "See More" control serves

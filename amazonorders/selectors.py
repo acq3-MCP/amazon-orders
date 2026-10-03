@@ -362,10 +362,13 @@ class Selectors:
     WISH_LIST_HEADER_SELECTOR = "div#list-header"
     WISH_LIST_ITEMS_SELECTOR = "ul#g-items"
     WISH_LIST_ITEM_SELECTOR = "li[data-itemid]"
-    # The "See More" control at the end of the rendered batch, a no-JS anchor (its JS twin holds
-    # the same URL in a hidden input)
+    # The "See More" control at the end of the rendered batch, a no-JS anchor (its JS twin holds the
+    # same URL in a hidden input of a scroll-state form; every batch appends a form of its own, so a
+    # scrolled page holds several, the last of which is current, and the last batch's form carries
+    # an empty paginationToken), and the marker the last batch ends with instead of a control
     WISH_LIST_NEXT_PAGE_LINK_SELECTOR = "a.wl-see-more[href]"
     WISH_LIST_NEXT_PAGE_INPUT_SELECTOR = "input[name='showMoreUrl']"
+    WISH_LIST_END_OF_LIST_SELECTOR = "div#endOfListMarker"
 
     FIELD_WISH_LIST_ENTRY_LINK_SELECTOR = "a[id^='wl-list-link-']"
     FIELD_WISH_LIST_ENTRY_TITLE_SELECTOR = "span[id^='wl-list-entry-title-']"
