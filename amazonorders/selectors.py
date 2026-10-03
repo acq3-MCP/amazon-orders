@@ -402,6 +402,9 @@ class Selectors:
     FIELD_WISH_LIST_ITEM_PRIORITY_LABEL_SELECTOR = "span[id^='itemPriorityLabel_']"
     FIELD_WISH_LIST_ITEM_ADDED_DATE_SELECTOR = "span[id^='itemAddedDate_']"
     FIELD_WISH_LIST_ITEM_PURCHASED_DATE_SELECTOR = "span[id^='itemPurchasedDate_']"
+    # The "This item is marked as purchased" alert, rendered (hidden) on an item whose quantity had has
+    # reached its quantity wanted, and not on one bought once whose wanted quantity was then raised
+    FIELD_WISH_LIST_ITEM_PURCHASED_MARKER_SELECTOR = "div[id^='itemGiftedFromElsewhereSuccessAlert_']"
     FIELD_WISH_LIST_ITEM_RATING_SELECTOR = "i[id^='review_stars_'] span.a-icon-alt"
     FIELD_WISH_LIST_ITEM_REVIEW_COUNT_SELECTOR = "a[id^='review_count_']"
     FIELD_WISH_LIST_ITEM_PRIME_BADGE_SELECTOR = "i.a-icon-prime"

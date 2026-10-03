@@ -531,33 +531,68 @@ class TestLists(UnitTestCase):
         self.assertEqual("Format: Paperback", item.variation)
         self.assertEqual(13.28, item.price)
 
-    def test_wish_list_item_note_and_quantities(self):
-        # GIVEN an item with a note, two wanted and one had, and a high priority
-        item_tag = self._item_tag(self._read_resource("wish-list-shared.html"), "IB096Y9Q2RVX9")
-        item_tag.select_one("span#itemComment_IB096Y9Q2RVX9").string = "  please buy two  "
-        item_tag.select_one("span#itemRequested_IB096Y9Q2RVX9").string = "2"
-        item_tag.select_one("span#itemPurchased_IB096Y9Q2RVX9").string = "1"
-        item_tag.select_one("span#itemPriority_IB096Y9Q2RVX9").string = "1"
-        item_tag.select_one("span#itemPriorityLabel_IB096Y9Q2RVX9").string = "high"
+    def test_wish_list_item_note_priority_and_quantities(self):
+        # GIVEN a purchased item that was then given a note, the "highest" priority, and a wanted quantity of
+        # two, so one more is needed
+        item = WishListItem(self._item_tag(self._read_resource("wish-list-shared-edited.html"), "I3W1WERO0RFQBJ"),
+                            self.test_config)
+
+        # THEN the note and priority read as entered, and the item is no longer purchased although its
+        # purchase date remains
+        self.assertEqual("test note. I changes the \"Needs\" to 2 and the \"Priority\" to \"Highest\"", item.note)
+        self.assertEqual(2, item.priority)
+        self.assertEqual("highest", item.priority_label)
+        self.assertEqual(2, item.quantity_requested)
+        self.assertEqual(1, item.quantity_purchased)
+        self.assertEqual(datetime.date(2026, 9, 24), item.purchased_date)
+        self.assertIsNone(item.added_date)
+        self.assertFalse(item.purchased)
+
+        # WHEN the quantity had reaches the quantity wanted
+        item_tag = self._item_tag(self._read_resource("wish-list-shared-edited.html"), "I3W1WERO0RFQBJ")
+        item_tag.select_one("span#itemPurchased_I3W1WERO0RFQBJ").string = "2"
+        item = WishListItem(item_tag, self.test_config)
+
+        # THEN purchased
+        self.assertTrue(item.purchased)
+
+    def test_wish_list_item_purchased_without_quantities(self):
+        # GIVEN a purchased item whose quantity row is gone
+        item_tag = self._item_tag(self._read_resource("wish-list-shared-edited.html"), "I3JOF2YQGGDZQY")
+        item_tag.select_one("span#itemQuantityRow_I3JOF2YQGGDZQY").decompose()
 
         # WHEN
         item = WishListItem(item_tag, self.test_config)
 
-        # THEN not yet purchased, since fewer are had than wanted
-        self.assertEqual("please buy two", item.note)
-        self.assertEqual(2, item.quantity_requested)
-        self.assertEqual(1, item.quantity_purchased)
-        self.assertEqual(1, item.priority)
-        self.assertEqual("high", item.priority_label)
-        self.assertFalse(item.purchased)
+        # THEN the purchased marker decides
+        self.assertIsNone(item.quantity_requested)
+        self.assertTrue(item.purchased)
 
-        # WHEN the quantity had reaches the quantity wanted
-        item_tag.select_one("span#itemPurchased_IB096Y9Q2RVX9").string = "2"
+        # WHEN the marker is gone too
+        item_tag.select_one("div#itemGiftedFromElsewhereSuccessAlert_I3JOF2YQGGDZQY").decompose()
         item = WishListItem(item_tag, self.test_config)
 
-        # THEN purchased, even with no purchase date rendered
-        self.assertIsNone(item.purchased_date)
+        # THEN the purchase date decides
         self.assertTrue(item.purchased)
+
+        # WHEN that is gone as well
+        item_tag.select_one("span#itemPurchasedDate_I3JOF2YQGGDZQY").decompose()
+        item = WishListItem(item_tag, self.test_config)
+
+        # THEN
+        self.assertFalse(item.purchased)
+
+    def test_parse_wish_list_page_edited(self):
+        # GIVEN the live DOM of the list after the edit (its members popover moved to the body modal)
+        result = AmazonLists.parse_wish_list_page(self._read_resource("wish-list-shared-edited.html"),
+                                                  self.test_config)
+
+        # THEN
+        self.assertEqual("wish_list", result.page_type)
+        self.assertEqual(10, len(result.items))
+        self.assertEqual(8, len([item for item in result.items if item.purchased]))
+        self.assertEqual(["Jane Doe", "John Doe"], [c.name for c in result.wish_list.collaborators])
+        self.assertIsNotNone(result.next_page_url)
 
     def test_wish_list_item_asin_from_link(self):
         # GIVEN an item whose hidden external ID is gone

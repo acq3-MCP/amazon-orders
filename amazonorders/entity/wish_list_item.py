@@ -90,13 +90,17 @@ class WishListItem(Parsable):
             selector=self.config.selectors.FIELD_WISH_LIST_ITEM_ADDED_DATE_SELECTOR,
             parse_date=True
         )
-        #: The date the item was last purchased. ``None`` for an item not yet purchased.
+        #: The date the item was last purchased. ``None`` for an item never purchased. Rendered in place of
+        #: :attr:`added_date` once a purchase is recorded, whether or not the item is :attr:`purchased` now.
         self.purchased_date: Optional[date] = self.safe_simple_parse(
             selector=self.config.selectors.FIELD_WISH_LIST_ITEM_PURCHASED_DATE_SELECTOR,
             parse_date=True
         )
-        #: Whether Amazon considers the item purchased: it has a :attr:`purchased_date`, or
-        #: :attr:`quantity_purchased` has reached :attr:`quantity_requested`.
+        #: Whether Amazon considers the item purchased, which is :attr:`quantity_purchased` having reached
+        #: :attr:`quantity_requested` (the page then marks the item purchased, and a list filtered to unpurchased
+        #: items omits it). An item bought once whose wanted quantity was then raised keeps its
+        #: :attr:`purchased_date` but is not purchased. When the page renders no quantities, the purchased
+        #: marker decides, and failing that the presence of a :attr:`purchased_date`.
         self.purchased: bool = self.safe_parse(self._parse_purchased)
         #: The product's average rating out of 5. ``None`` when the page renders none.
         self.rating: Optional[float] = self.safe_parse(self._parse_rating)
@@ -238,13 +242,14 @@ class WishListItem(Parsable):
         return self._text(self.config.selectors.FIELD_WISH_LIST_ITEM_PRIORITY_LABEL_SELECTOR)
 
     def _parse_purchased(self) -> bool:
-        if self.purchased_date is not None:
+        if self.quantity_requested is not None and self.quantity_purchased is not None:
+            return self.quantity_requested > 0 and self.quantity_purchased >= self.quantity_requested
+
+        marker_tag = util.select_one(self.parsed, self.config.selectors.FIELD_WISH_LIST_ITEM_PURCHASED_MARKER_SELECTOR)
+        if marker_tag is not None:
             return True
 
-        if self.quantity_requested is None or self.quantity_purchased is None:
-            return False
-
-        return self.quantity_requested > 0 and self.quantity_purchased >= self.quantity_requested
+        return self.purchased_date is not None
 
     def _parse_rating(self) -> Optional[float]:
         value = self._text(self.config.selectors.FIELD_WISH_LIST_ITEM_RATING_SELECTOR)
