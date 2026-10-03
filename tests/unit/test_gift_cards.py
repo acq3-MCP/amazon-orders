@@ -371,33 +371,6 @@ $85.46
         self.assertIn("next=", cm.exception.meta["next_page_url"])
         self.assertIsNone(self.amazon_gift_cards.last_activity_pull)
 
-    def test_gift_card_activity_order_number_from_description(self):
-        # GIVEN a row whose Order reference appears only in the description text, with no anchor
-        row_html = """
-        <tr>
-            <td> May 3, 2026 </td>
-            <td>
-                <span>Refund from Amazon.com order 111-2266921-0923465</span>
-            </td>
-            <td>
-$5.00
-            </td>
-            <td>
-$5.00
-            </td>
-        </tr>
-        """
-        parsed = BeautifulSoup(row_html, self.test_config.bs4_parser)
-        row_tag = parsed.select_one("tr")
-
-        # WHEN
-        entry = GiftCardActivity(row_tag, self.test_config)
-
-        # THEN the Order number is extracted from the description and the details link constructed
-        self.assertEqual("111-2266921-0923465", entry.order_number)
-        self.assertEqual(f"{self.test_config.constants.ORDER_DETAILS_URL}?orderID=111-2266921-0923465",
-                         entry.order_details_link)
-
     def test_fixture_ledger_chain_invariant(self):
         # THEN the sanitized fixtures preserve the ledger arithmetic the live page satisfies exactly:
         # each row's closing balance equals the next-older row's closing balance plus the row's amount
@@ -450,3 +423,7 @@ $5.00
         self.assertTrue(found_table)
         self.assertEqual(len(activity), 11)
         self.assertIsNone(next_page_url)
+        # Older Order numbers (four-digit prefix) resolve from the Order link like any other
+        self.assertEqual(["4000-100001-2000001", "4000-100002-2000002", "4000-100003-2000003", "4000-100004-2000004"],
+                         [entry.order_number for entry in activity[6:10]])
+        self.assertIn("orderID=4000-100001-2000001", activity[6].order_details_link)

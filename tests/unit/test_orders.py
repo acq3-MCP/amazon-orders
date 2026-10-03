@@ -1,7 +1,6 @@
 __copyright__ = "Copyright (c) 2024-2025 Alex Laird"
 __license__ = "MIT"
 
-import datetime
 import os
 import unittest
 from datetime import date
@@ -391,6 +390,25 @@ class TestOrders(UnitTestCase):
         self.assertEqual(date(2024, 12, 12), order.order_placed_date)
         self.assertEqual(0, len(order.items))  # Per-item details require the Whole Foods receipt page
 
+    @responses.activate
+    def test_get_order_history_item_count_with_thousands_separator(self):
+        # GIVEN
+        self.amazon_session.is_authenticated = True
+        with open(os.path.join(self.RESOURCES_DIR, "orders", "order-history-wholefoods.html"), "r",
+                  encoding="utf-8") as f:
+            responses.add(
+                responses.GET,
+                self.test_config.constants.ORDER_HISTORY_URL,
+                body=f.read().replace("10 items in this purchase", "1,234 items in this purchase"),
+                status=200,
+            )
+
+        # WHEN
+        orders = self.amazon_orders.get_order_history(year=2024, keep_paging=False)
+
+        # THEN
+        self.assertEqual(1234, orders[7].item_count)
+
     def _get_order_history_full_details_wholefoods(self,
                                                    whole_foods_details="order-details-fopo-147-7999693-6862434.html"):
         # A catering history page with three FOPO orders and six standard orders, plus the details pages
@@ -676,6 +694,144 @@ class TestOrders(UnitTestCase):
         self.assertIsNone(order.index)
         self.assertEqual(1, resp.call_count)
 
+    def test_parse_order_history(self):
+        # GIVEN
+        with open(os.path.join(self.RESOURCES_DIR, "orders", "order-history-2018-0.html"), "r",
+                  encoding="utf-8") as f:
+            html = f.read()
+
+        # WHEN
+        orders = AmazonOrders.parse_order_history(html, self.test_config)
+
+        # THEN
+        self.assertEqual(10, len(orders))
+        self.assert_order_112_0399923_3070642(orders[3], False)
+        self.assertEqual(3, orders[3].index)
+        self.assert_orders_list_index(orders)
+
+    def test_parse_order_details(self):
+        # GIVEN
+        order_id = "112-9685975-5907428"
+        with open(os.path.join(self.RESOURCES_DIR, "orders", f"order-details-{order_id}.html"), "r",
+                  encoding="utf-8") as f:
+            html = f.read()
+
+        # WHEN
+        order = AmazonOrders.parse_order_details(html, self.test_config)
+
+        # THEN
+        self.assert_order_112_9685975_5907428_multiple_items_shipments_sellers(order, True)
+
+    def test_parse_order_details_cancelled_by_seller(self):
+        # GIVEN
+        with open(os.path.join(self.RESOURCES_DIR, "orders", "order-details-cancelled-by-seller.html"), "r",
+                  encoding="utf-8") as f:
+            html = f.read()
+
+        # WHEN
+        order = AmazonOrders.parse_order_details(html, self.test_config)
+
+        # THEN
+        self.assertTrue(order.cancelled)
+        self.assertIsNone(order.grand_total)
+        self.assertEqual("113-1000001-2000001", order.order_number)
+        self.assertEqual(date(2026, 8, 8), order.order_placed_date)
+        self.assertEqual(1, len(order.items))
+        self.assertEqual(149.99, order.items[0].price)
+        self.assertEqual(1, len(order.shipments))
+        self.assertEqual("Cancelled", order.shipments[0].delivery_status)
+
+    def test_parse_order_details_cancelled_multiple_items(self):
+        # GIVEN
+        with open(os.path.join(self.RESOURCES_DIR, "orders", "order-details-cancelled-multiple-items.html"), "r",
+                  encoding="utf-8") as f:
+            html = f.read()
+
+        # WHEN
+        order = AmazonOrders.parse_order_details(html, self.test_config)
+
+        # THEN
+        self.assertTrue(order.cancelled)
+        self.assertIsNone(order.grand_total)
+        self.assertEqual("103-1000003-2000003", order.order_number)
+        self.assertEqual(3, len(order.items))
+        self.assertEqual(["Cancelled"], [shipment.delivery_status for shipment in order.shipments])
+        self.assertEqual(3, len(order.shipments[0].items))
+
+    def test_parse_order_details_one_shipment_cancelled(self):
+        # GIVEN
+        with open(os.path.join(self.RESOURCES_DIR, "orders", "order-details-111-6778632-7354601.html"), "r",
+                  encoding="utf-8") as f:
+            html = f.read().replace(self.DELIVERED_HEADING, "<span>Cancelled</span>", 1)
+
+        # WHEN
+        order = AmazonOrders.parse_order_details(html, self.test_config)
+
+        # THEN
+        self.assertFalse(order.cancelled)
+        self.assertEqual(60.88, order.grand_total)
+        self.assertEqual(["Cancelled", "Delivered September 9"],
+                         [shipment.delivery_status for shipment in order.shipments])
+
+    def test_parse_order_details_every_shipment_cancelled(self):
+        # GIVEN
+        with open(os.path.join(self.RESOURCES_DIR, "orders", "order-details-111-6778632-7354601.html"), "r",
+                  encoding="utf-8") as f:
+            html = f.read().replace(self.DELIVERED_HEADING, "<span>Cancelled</span>")
+
+        # WHEN
+        order = AmazonOrders.parse_order_details(html, self.test_config)
+
+        # THEN
+        self.assertTrue(order.cancelled)
+        self.assertIsNone(order.grand_total)
+
+    def test_parse_order_details_unparseable(self):
+        # WHEN
+        with self.assertRaises(AmazonOrdersError) as cm:
+            AmazonOrders.parse_order_details("<html></html>", self.test_config)
+
+        # THEN
+        self.assertIn("Could not parse Order details", str(cm.exception))
+
+    def test_parse_order_history_start_index(self):
+        # GIVEN
+        with open(os.path.join(self.RESOURCES_DIR, "orders", "order-history-2018-0.html"), "r",
+                  encoding="utf-8") as f:
+            html = f.read()
+
+        # WHEN
+        orders = AmazonOrders.parse_order_history(html, self.test_config, start_index=10)
+
+        # THEN
+        self.assertEqual(10, len(orders))
+        self.assertEqual(10, orders[0].index)
+        self.assertEqual(19, orders[-1].index)
+
+    def test_parse_order_history_empty_window(self):
+        # GIVEN
+        with open(os.path.join(self.RESOURCES_DIR, "orders", "order-history-digital-2005-0.html"), "r",
+                  encoding="utf-8") as f:
+            html = f.read()
+
+        # WHEN
+        orders = AmazonOrders.parse_order_history(html, self.test_config)
+
+        # THEN
+        self.assertEqual(0, len(orders))
+
+    def test_parse_order_history_start_index_past_end(self):
+        # GIVEN
+        with open(os.path.join(self.RESOURCES_DIR, "orders", "order-history-2026-220.html"), "r",
+                  encoding="utf-8") as f:
+            html = f.read()
+
+        # WHEN
+        orders = AmazonOrders.parse_order_history(html, self.test_config, start_index=220)
+
+        # THEN
+        self.assertEqual(0, len(orders))
+
     def test_parse_order_history_recipient_scoped_to_each_order(self):
         # GIVEN
         with open(os.path.join(self.RESOURCES_DIR, "orders", "order-history-multiple-recipients.html"), "r",
@@ -718,6 +874,32 @@ class TestOrders(UnitTestCase):
 
         # THEN
         self.assertNotIn("encrypted", str(cm.exception))
+
+    @responses.activate
+    def test_get_order_payment_instrument_layout(self):
+        # GIVEN
+        self.amazon_session.is_authenticated = True
+        order_id = "112-5234348-8033063"
+        with open(os.path.join(self.RESOURCES_DIR, "orders", f"order-details-{order_id}.html"), "r",
+                  encoding="utf-8") as f:
+            resp = responses.add(
+                responses.GET,
+                f"{self.test_config.constants.ORDER_DETAILS_URL}?orderID={order_id}",
+                body=f.read(),
+                status=200,
+            )
+
+        # WHEN
+        order = self.amazon_orders.get_order(order_id)
+
+        # THEN
+        self.assertEqual(order_id, order.order_number)
+        self.assertEqual("Blue Cash Everyday®", order.payment_method)
+        self.assertEqual("1234", order.payment_method_last_4)
+        self.assertEqual(54.78, order.grand_total)
+        self.assertEqual(50.97, order.subtotal)
+        self.assertEqual(3.81, order.estimated_tax)
+        self.assertEqual(1, resp.call_count)
 
     @responses.activate
     def test_get_order_chargesummary_totals(self):
@@ -1014,52 +1196,6 @@ class TestOrders(UnitTestCase):
                     # THEN
                     self.assertEqual(0, len(orders))
                     self.assertEqual(1, resp.call_count)
-
-    def test_parse_order_details_unparseable(self):
-        # WHEN
-        with self.assertRaises(AmazonOrdersError) as cm:
-            AmazonOrders.parse_order_details("<html></html>", self.test_config)
-
-        # THEN
-        self.assertIn("Could not parse Order details", str(cm.exception))
-
-    def test_parse_order_history_start_index(self):
-        # GIVEN
-        with open(os.path.join(self.RESOURCES_DIR, "orders", "order-history-2018-0.html"), "r",
-                  encoding="utf-8") as f:
-            html = f.read()
-
-        # WHEN
-        orders = AmazonOrders.parse_order_history(html, self.test_config, start_index=10)
-
-        # THEN
-        self.assertEqual(10, len(orders))
-        self.assertEqual(10, orders[0].index)
-        self.assertEqual(19, orders[-1].index)
-
-    def test_parse_order_history_empty_window(self):
-        # GIVEN
-        with open(os.path.join(self.RESOURCES_DIR, "orders", "order-history-digital-2005-0.html"), "r",
-                  encoding="utf-8") as f:
-            html = f.read()
-
-        # WHEN
-        orders = AmazonOrders.parse_order_history(html, self.test_config)
-
-        # THEN
-        self.assertEqual(0, len(orders))
-
-    def test_parse_order_history_start_index_past_end(self):
-        # GIVEN
-        with open(os.path.join(self.RESOURCES_DIR, "orders", "order-history-2026-220.html"), "r",
-                  encoding="utf-8") as f:
-            html = f.read()
-
-        # WHEN
-        orders = AmazonOrders.parse_order_history(html, self.test_config, start_index=220)
-
-        # THEN
-        self.assertEqual(0, len(orders))
 
     def test_parse_order_history_empty_page_within_window(self):
         # GIVEN
@@ -1388,100 +1524,6 @@ class TestOrders(UnitTestCase):
         self.assertIn(f"timeFilter=year-{year}", request_url)
         self.assertIn("orderFilter=digital-orders", request_url)
         self.assertEqual(10, len(orders))
-
-    def test_parse_order_history(self):
-        # GIVEN
-        with open(os.path.join(self.RESOURCES_DIR, "orders", "order-history-2018-0.html"), "r",
-                  encoding="utf-8") as f:
-            html = f.read()
-
-        # WHEN
-        orders = AmazonOrders.parse_order_history(html, self.test_config)
-
-        # THEN
-        self.assertEqual(10, len(orders))
-        self.assert_order_112_0399923_3070642(orders[3], False)
-        self.assertEqual(3, orders[3].index)
-        self.assert_orders_list_index(orders)
-
-    def test_parse_order_details(self):
-        # GIVEN
-        order_id = "112-9685975-5907428"
-        with open(os.path.join(self.RESOURCES_DIR, "orders", f"order-details-{order_id}.html"), "r",
-                  encoding="utf-8") as f:
-            html = f.read()
-
-        # WHEN
-        order = AmazonOrders.parse_order_details(html, self.test_config)
-
-        # THEN
-        self.assert_order_112_9685975_5907428_multiple_items_shipments_sellers(order, True)
-
-    def test_parse_order_details_cancelled_by_seller(self):
-        # GIVEN - the current details layout for an order the seller cancelled after a long "Attempting
-        # to Cancel": the cancellation is the shipment-status heading, there is no alert box and no totals
-        with open(os.path.join(self.RESOURCES_DIR, "orders", "order-details-cancelled-by-seller.html"), "r",
-                  encoding="utf-8") as f:
-            html = f.read()
-
-        # WHEN - strict config: a missing grand_total raises unless the Order is known to be cancelled
-        order = AmazonOrders.parse_order_details(html, self.test_config)
-
-        # THEN
-        self.assertTrue(order.cancelled)
-        self.assertIsNone(order.grand_total)
-        self.assertEqual("113-1000001-2000001", order.order_number)
-        self.assertEqual(datetime.date(2026, 8, 8), order.order_placed_date)
-        self.assertEqual(1, len(order.items))
-        self.assertEqual(149.99, order.items[0].price)
-        self.assertEqual(1, len(order.shipments))
-        self.assertEqual("Cancelled", order.shipments[0].delivery_status)
-
-    def test_parse_order_details_cancelled_multiple_items(self):
-        # GIVEN - a three-item order the buyer cancelled (a different sentence, the same heading), which
-        # the current layout renders as a single cancelled shipment holding every item
-        with open(os.path.join(self.RESOURCES_DIR, "orders", "order-details-cancelled-multiple-items.html"), "r",
-                  encoding="utf-8") as f:
-            html = f.read()
-
-        # WHEN
-        order = AmazonOrders.parse_order_details(html, self.test_config)
-
-        # THEN
-        self.assertTrue(order.cancelled)
-        self.assertIsNone(order.grand_total)
-        self.assertEqual("103-1000003-2000003", order.order_number)
-        self.assertEqual(3, len(order.items))
-        self.assertEqual(["Cancelled"], [shipment.delivery_status for shipment in order.shipments])
-        self.assertEqual(3, len(order.shipments[0].items))
-
-    def test_parse_order_details_one_shipment_cancelled(self):
-        # GIVEN
-        with open(os.path.join(self.RESOURCES_DIR, "orders", "order-details-111-6778632-7354601.html"), "r",
-                  encoding="utf-8") as f:
-            html = f.read().replace(self.DELIVERED_HEADING, "<span>Cancelled</span>", 1)
-
-        # WHEN
-        order = AmazonOrders.parse_order_details(html, self.test_config)
-
-        # THEN
-        self.assertFalse(order.cancelled)
-        self.assertEqual(60.88, order.grand_total)
-        self.assertEqual(["Cancelled", "Delivered September 9"],
-                         [shipment.delivery_status for shipment in order.shipments])
-
-    def test_parse_order_details_every_shipment_cancelled(self):
-        # GIVEN
-        with open(os.path.join(self.RESOURCES_DIR, "orders", "order-details-111-6778632-7354601.html"), "r",
-                  encoding="utf-8") as f:
-            html = f.read().replace(self.DELIVERED_HEADING, "<span>Cancelled</span>")
-
-        # WHEN
-        order = AmazonOrders.parse_order_details(html, self.test_config)
-
-        # THEN
-        self.assertTrue(order.cancelled)
-        self.assertIsNone(order.grand_total)
 
     def test_parse_order_details_digital(self):
         # GIVEN - a digital (D01-) details page; its row-label differences are handled by the

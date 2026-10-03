@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased](https://github.com/alexdlaird/amazon-orders/compare/4.6.0...HEAD)
+## [Unreleased](https://github.com/alexdlaird/amazon-orders/compare/4.6.1...HEAD)
 
 ### Added
 
@@ -26,8 +26,6 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - `prime-payments` CLI command, with `--output`, and `OutputFormatter.prime_payment_text()`.
 - `parse_prime_payments_page()` classifies Membership Central's own error page (a 200 served in place of the widget when the service refuses the library's client, which it does from datacenter and residential addresses alike while a browser on the same account gets the payments) as `page_type="error"` instead of raising "Amazon changed the HTML", and `get_prime_payments()`, now documented as best-effort, raises a distinct `AmazonOrdersError` for it that points at the parse-from-string path.
 - `Selectors.AUTH_CHALLENGE_PAGE_SELECTORS`, the sign-in/Captcha/challenge page selectors the parse-from-string entry points share; `parse_order_history_page()` now uses it in place of its inline list.
-- `util.ORDER_NUMBER_REGEX`, the physical-or-digital Order number pattern, moved from `entity.gift_card_activity` (which still imports it) so entities can share it.
-
 - `AmazonLists` (`amazonorders/lists.py`) with `get_lists()` (the index of the account's Lists, read from the nav every list page carries) and `get_list()` (a list with its items, following the page's "See More" batches to the end of the list), and the `WishList` (ID, name, privacy, default and collaborative flags, members, the filter and sort the page rendered with, items), `WishListCollaborator`, and `WishListItem` (list item ID, ASIN, title, link carrying the list attribution, price and price range, variation, note, quantities needed and had, priority, added and purchased dates, purchased flag, rating, review count, Prime badge, and the primary button's label) entities. The list page carries no per-item attribution, so on a collaborative list nothing says which member added an item; the list itself is the unit of intent. The nav also indexes the Alexa shopping list, returned with `list_type` `AlexaList` and not otherwise parsed. `WishListItem.purchased` follows Amazon's own rule (the quantity had has reached the quantity wanted), so an item bought once whose wanted quantity was then raised keeps its `purchased_date` but is not purchased. Parsing is validated against sanitized captures of two live list pages and the live DOM of one scrolled to its end-of-list marker and after an item was given a note, priority, and quantity.
 - `AmazonLists.parse_wish_list_page()`, the parse-from-string twin, returning a `WishListPageResult` whose `page_type` distinguishes `wish_list` (a list page), `items` (a "See More" batch), and `not_wish_list` (a sign-in or challenge page). Item-level failures carry `partial_items` in the exception `meta`; mid-pagination failures in `get_list()` carry `partial_items` and `next_page_url`.
 - `AmazonLists.last_list_pull` (a `WishListPullResult` with `pages_walked`, `items_parsed`, and `stop_reason`) for per-pull observability.
@@ -38,23 +36,30 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Changed
 
 - `RewardsBalance` now extends `Parsable` (its `parsed` is the page's `__NEXT_DATA__` script tag), so it has `to_dict()` and renders in every `OutputFormatter` format. Its constructor now takes the tag before the card entry.
+- Synced with upstream 4.6.1: the `util.select()`/`select_one()`, transactions `D01-`/`seller`, and cancelled-layout fixes the fork carried now come from upstream as merged there, and currency parsing accepts either decimal mark. Transaction dates that fail to parse now raise `AmazonOrdersEntityError` unless `warn_on_missing_required_field` is set.
 - Synced with upstream 4.6.0. `ORDER_HISTORY_CSD_ENCRYPTED_SELECTOR` now keys on the encrypted payload call rather than the no-JS fallback, which readable Whole Foods Market pages also carry.
 
 ### Fixed
 
-- `Order.cancelled` is now detected on the current order-details layout, which renders a cancellation as the shipment-status heading ("Cancelled" over "Your order was cancelled …") with no alert box and no totals; `ORDER_SKIP_TOTALS` only knew the alert-box rendering, so such a page failed on the required `grand_total` (or, under `warn_on_missing_required_field`, read as a not-cancelled order with no total). Observed on seller-cancelled and buyer-cancelled orders alike, including multi-item ones, which the layout renders as one cancelled shipment. The layout has a status heading per Shipment, and the Order is cancelled only when every one reads "Cancelled", so a partially cancelled Order keeps its totals.
-- `Transaction.order_number` now parses digital (`D01-…`) Order IDs on the transactions page; the ID regex accepted digits and hyphens only, so a digital row silently came back with an empty Order number. A row whose Order text carries no Order number now yields `None` and logs a warning instead of an empty string.
-- `Transaction.seller` is now `None` on a digital row, whose seller cell repeats the Order ID; it previously returned the ID as the seller.
+- `GiftCardActivity.order_number` is now read from the row's Order link, so older four-digit-prefix Order numbers (`4000-…`, seen on 2015 ledger rows) resolve too; they previously came back `None`, losing the Order reference. A link whose text is not an Order number yields `None` with a warning.
 - `GiftCardActivity.order_number` now resolves digital (`D01-…`) Order IDs — ledger rows anchored to digital orders previously lost their Order reference entirely.
 - Row-level parse failures during `get_gift_card_activity()` pagination now carry the documented resume metadata (`next_page_url`, `partial_activity`) instead of raising without `meta`.
 - `AmazonOrders.last_history_pull` is no longer populated when a `full_details` pull fails mid-fetch, honoring its stays-`None`-on-failure contract.
 - `digital-orders --year --all` now fails explicitly instead of silently ignoring `--year`.
 - `get_gift_card_activity()` logs a warning when activity dates fail to parse (the `days` window cannot apply to such rows), instead of silently walking the full ledger.
-- `Parsable.to_currency()` is now a static method (it never used instance state), usable without constructing an entity.
-- `util.select_one()` with a text-matched `Selector` now returns the first tag whose text matches, not only the first tag the CSS matches (which made every label after the first in a label/value list unselectable). `util.select()` already behaved this way.
 - `Parsable.safe_parse()` now also degrades a field on `TypeError` and `RecursionError`, which is what page-embedded JSON produces when it is valid but not the expected shape (the Order address fallback wraps it in `BeautifulSoup`) or nested deeply enough to exhaust the interpreter's stack (`json.loads` raises `RecursionError`, a `RuntimeError`, not a `ValueError`). Previously either aborted the whole entity instead of degrading one field. Required-field errors still propagate.
 - `AmazonRewards` now raises `AmazonOrdersError` rather than a bare `RecursionError` on deeply nested page data.
-- `util.select()` given a `Selector` (text-matched) now returns the matched tags; it previously extended the result with each matched tag's children, so a matched tag with no children was dropped and a matched tag with several was counted several times.
+
+## [4.6.1](https://github.com/alexdlaird/amazon-orders/compare/4.6.0...4.6.1) - 2026-10-03
+
+### Added
+
+- Improved sign-in, session, and currency and date parsing for non-`.com` Amazon sites, including `amazon.co.jp`.
+- `DECIMAL_SEPARATOR`, `THOUSANDS_SEPARATOR`, and `CURRENCY_FORMAT` on `Constants`, and currency parsing for either decimal mark (e.g. `$1,234.56`, `1.234,56 €`, `12,99 €`, or `CHF 1'234.50`).
+
+### Fixed
+
+- Bug fixes and stability improvements.
 
 ## [4.6.0](https://github.com/alexdlaird/amazon-orders/compare/4.5.0...4.6.0) - 2026-09-10
 
