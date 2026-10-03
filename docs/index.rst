@@ -186,6 +186,39 @@ three months, so :func:`~amazonorders.digital_orders.AmazonDigitalOrders.get_dig
 explicit time filter, and :func:`~amazonorders.digital_orders.AmazonDigitalOrders.get_all_digital_orders`
 enumerates the year windows the page itself offers rather than assuming a range.
 
+Lists (Wish Lists)
+------------------
+
+:class:`~amazonorders.lists.AmazonLists` reads the account's Lists: the index every list page carries in its
+nav, and a list's items.
+
+.. code:: python
+
+    from amazonorders.lists import AmazonLists
+
+    amazon_lists = AmazonLists(amazon_session)
+
+    for wish_list in amazon_lists.get_lists():
+        print(f"{wish_list.list_id} - {wish_list.name} - {wish_list.privacy}")
+
+    wish_list = amazon_lists.get_list("<LIST_ID>")
+    for item in wish_list.items:
+        if not item.purchased:
+            print(f"{item.title} - {item.price} - {item.link}")
+
+A list page renders its first batch of items and serves the rest from a "See More" control, which
+:func:`~amazonorders.lists.AmazonLists.get_list` follows to the end of the list. The page carries no per-item
+attribution, so on a collaborative list nothing says which member added an item: a list kept for one purpose
+is how that purpose is read back. Amazon marks an item purchased when it is bought through the item's
+:attr:`~amazonorders.entity.wish_list_item.WishListItem.link`, so the unpurchased items of a list are a queue
+that clears itself. The nav also indexes the account's Alexa shopping list, returned with
+:attr:`~amazonorders.entity.wish_list.WishList.list_type` ``AlexaList``; its page is not parsed.
+
+An already-fetched page can be parsed without a session with
+:func:`~amazonorders.lists.AmazonLists.parse_wish_list_page`, whose result's
+:attr:`~amazonorders.lists.WishListPageResult.page_type` tells a list page apart from a "See More" batch of
+items and from a sign-in or challenge page.
+
 Command Line Usage
 ------------------
 
@@ -202,12 +235,14 @@ You can also run any command available to the main Python interface from the com
     amazon-orders gift-card-activity --days 90
     amazon-orders rewards-balance
     amazon-orders prime-payments
+    amazon-orders wish-lists
+    amazon-orders wish-list <LIST_ID>
 
 Output Formats
 --------------
 
 The ``history``, ``order``, ``transactions``, ``order-transactions``, ``digital-orders``, ``gift-card-activity``,
-``rewards-balance``, and ``prime-payments`` commands accept ``--output``, which renders their entities as ``text`` (the default), ``json``, ``yaml``, or ``csv``. Progress messages
+``rewards-balance``, ``prime-payments``, ``wish-lists``, and ``wish-list`` commands accept ``--output``, which renders their entities as ``text`` (the default), ``json``, ``yaml``, or ``csv``. Progress messages
 are written to ``stderr``, so redirecting ``stdout`` captures only the data.
 
 .. code:: sh

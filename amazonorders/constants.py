@@ -144,6 +144,15 @@ class Constants:
     PRIME_PAYMENTS_URL = f"{BASE_URL}{PRIME_PAYMENTS_ROUTE}"
 
     ##########################################################################
+    # URLs for Lists (wish lists)
+    ##########################################################################
+
+    # The Lists page: with no list ID it renders the default (or most recently viewed) list, and every
+    # list page carries the index of the account's lists in its left nav
+    WISH_LISTS_ROUTE = "/hz/wishlist/ls"
+    WISH_LISTS_URL = f"{BASE_URL}{WISH_LISTS_ROUTE}"
+
+    ##########################################################################
     # Headers
     ##########################################################################
 
@@ -246,6 +255,7 @@ class Constants:
         self.GIFT_CARD_BALANCE_URL = f"{base_url}{self.GIFT_CARD_BALANCE_ROUTE}"
         self.REWARDS_CARD_URL = f"{base_url}{self.REWARDS_CARD_ROUTE}"
         self.PRIME_PAYMENTS_URL = f"{base_url}{self.PRIME_PAYMENTS_ROUTE}"
+        self.WISH_LISTS_URL = f"{base_url}{self.WISH_LISTS_ROUTE}"
 
         host = urlparse(base_url).netloc.lower().split(":")[0]
         if host.startswith("www."):

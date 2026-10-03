@@ -16,6 +16,8 @@ from amazonorders.entity.parsable import Parsable
 from amazonorders.entity.prime_payment import PrimePayment
 from amazonorders.entity.rewards_balance import RewardsBalance
 from amazonorders.entity.transaction import Transaction
+from amazonorders.entity.wish_list import WishList
+from amazonorders.entity.wish_list_item import WishListItem
 
 logger = logging.getLogger(__name__)
 
@@ -93,6 +95,10 @@ class OutputFormatter:
             return self.rewards_balance_text(entity)
         elif isinstance(entity, PrimePayment):
             return self.prime_payment_text(entity)
+        elif isinstance(entity, WishList):
+            return self.wish_list_text(entity)
+        elif isinstance(entity, WishListItem):
+            return self.wish_list_item_text(entity)
 
         return str(entity)
 
@@ -268,3 +274,70 @@ Order #{order_number}
             payment_str += f"\n  Receipt: {payment.receipt_link}"
 
         return payment_str
+
+    def wish_list_text(self,
+                       wish_list: WishList) -> str:
+        """
+        Render a WishList as human-readable text, with its items when they were fetched.
+
+        :param wish_list: The WishList to render.
+        :return: The WishList as text.
+        """
+        wish_list_str = f"List {wish_list.list_id}: {wish_list.name}"
+        flags = []
+        if wish_list.privacy:
+            flags.append(wish_list.privacy)
+        if wish_list.is_default:
+            flags.append("Default")
+        if wish_list.is_collaborative:
+            flags.append("Collaborative")
+        if wish_list.list_type and wish_list.list_type != "WishList":
+            flags.append(wish_list.list_type)
+        if flags:
+            wish_list_str += f" ({', '.join(flags)})"
+        if wish_list.collaborators:
+            members = ", ".join(f"{c.name}{' (owner)' if c.is_owner else ''}" for c in wish_list.collaborators)
+            wish_list_str += f"\n  Members: {members}"
+        if wish_list.items is not None:
+            showing = f", showing {wish_list.items_filter}" if wish_list.items_filter else ""
+            wish_list_str += f"\n  Items: {len(wish_list.items)}{showing}"
+            for item in wish_list.items:
+                wish_list_str += "\n\n" + "\n".join(f"  {line}" for line in self.wish_list_item_text(item).split("\n"))
+
+        return wish_list_str
+
+    def wish_list_item_text(self,
+                            item: WishListItem) -> str:
+        """
+        Render a WishListItem as human-readable text.
+
+        :param item: The WishListItem to render.
+        :return: The WishListItem as text.
+        """
+        item_str = f"{item.title}"
+        if item.variation:
+            item_str += f" [{item.variation}]"
+        if item.price_min is not None and item.price_max is not None:
+            price = (f"{self.config.constants.format_currency(item.price_min)} - "
+                     f"{self.config.constants.format_currency(item.price_max)}")
+        elif item.price is not None:
+            price = self.config.constants.format_currency(item.price)
+        else:
+            price = "N/A"
+        item_str += f"\n  Price: {price}"
+        if item.asin:
+            item_str += f"\n  ASIN: {item.asin}"
+        if item.quantity_requested is not None:
+            item_str += f"\n  Needs: {item.quantity_requested}, Has: {item.quantity_purchased}"
+        if item.priority_label:
+            item_str += f"\n  Priority: {item.priority_label}"
+        if item.note:
+            item_str += f"\n  Note: {item.note}"
+        if item.purchased:
+            item_str += f"\n  Purchased: {item.purchased_date or 'yes'}"
+        elif item.added_date:
+            item_str += f"\n  Added: {item.added_date}"
+        if item.link:
+            item_str += f"\n  Link: {item.link}"
+
+        return item_str
