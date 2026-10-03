@@ -23,10 +23,6 @@ _JAPANESE_DATE_RE = re.compile(r"(\d{4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*�
 #: ``dateutil`` would have filled in a day, month, or year missing from the text.
 _DATE_DEFAULTS = [datetime(2001, 1, 1), datetime(2002, 2, 2)]
 
-#: Matches an Amazon Order number anywhere in a string: physical (``111-1234567-1234567``) and
-#: digital (``D01-1234567-1234567``) IDs alike.
-ORDER_NUMBER_REGEX = re.compile(r"((?:\d{3}|[A-Z]\d{2})-\d{7}-\d{7})")
-
 
 class AmazonSessionResponse:
     """

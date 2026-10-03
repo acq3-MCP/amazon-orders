@@ -111,7 +111,7 @@ class AmazonGiftCards:
         balance_tag = util.select_one(page_response.parsed, self.config.selectors.GIFT_CARD_BALANCE_SELECTOR)
         balance = None
         if balance_tag:
-            balance = Parsable.to_currency(balance_tag.text)
+            balance = Parsable(balance_tag, self.config).to_currency(balance_tag.text)
 
         if balance is None:
             raise AmazonOrdersError("Could not parse Gift Card balance. Check if Amazon changed the HTML.")
