@@ -34,6 +34,11 @@ Main Interface
     :private-members:
     :show-inheritance:
 
+.. automodule:: amazonorders.lists
+    :members:
+    :private-members:
+    :show-inheritance:
+
 .. automodule:: amazonorders.digital_orders
     :members:
     :private-members:
@@ -171,6 +176,16 @@ Entities
     :members:
     :private-members:
     :undoc-members:
+    :show-inheritance:
+
+.. automodule:: amazonorders.entity.wish_list
+    :members:
+    :private-members:
+    :show-inheritance:
+
+.. automodule:: amazonorders.entity.wish_list_item
+    :members:
+    :private-members:
     :show-inheritance:
 
 Exceptions

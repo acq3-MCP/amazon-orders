@@ -765,6 +765,110 @@ class TestCli(UnitTestCase):
         self.assertNotIn("parsed", payments[0])
 
     @responses.activate
+    def test_wish_lists_command(self):
+        # GIVEN
+        self.given_unauthenticated_home_page()
+        self.given_login_responses_success()
+        with open(os.path.join(self.RESOURCES_DIR, "lists", "wish-list-default.html"), "r",
+                  encoding="utf-8") as f:
+            resp = responses.add(
+                responses.GET,
+                self.test_config.constants.WISH_LISTS_URL,
+                body=f.read(),
+                status=200,
+            )
+
+        # WHEN
+        response = self.runner.invoke(amazon_orders_cli,
+                                      [
+                                          "--config-path", self.test_config.config_path,
+                                          "--username", "some-username@gmail.com",
+                                          "--password", "some-password",
+                                          "wish-lists"
+                                      ])
+
+        # THEN
+        self.assertEqual(0, response.exit_code)
+        self.assert_login_responses_success()
+        self.assertEqual(1, resp.call_count)
+        self.assertIn("List 1AAAAAAAAAAAA: Wish List (Private, Default)", response.output)
+        self.assertIn("List 1CCCCCCCCCCCC: Household (shared) (Private, Collaborative)", response.output)
+        self.assertIn("List 2DDDDDDDDDDD: Alexa List (Private, AlexaList)", response.output)
+        self.assertNotIn("Items:", response.output)
+        self.assertIn("6 Lists parsed", response.output)
+
+    @responses.activate
+    def test_wish_list_command(self):
+        # GIVEN
+        self.given_unauthenticated_home_page()
+        self.given_login_responses_success()
+        with open(os.path.join(self.RESOURCES_DIR, "lists", "wish-list-shared-scrolled.html"), "r",
+                  encoding="utf-8") as f:
+            resp = responses.add(
+                responses.GET,
+                f"{self.test_config.constants.WISH_LISTS_URL}/1CCCCCCCCCCCC",
+                body=f.read(),
+                status=200,
+            )
+
+        # WHEN
+        response = self.runner.invoke(amazon_orders_cli,
+                                      [
+                                          "--config-path", self.test_config.config_path,
+                                          "--username", "some-username@gmail.com",
+                                          "--password", "some-password",
+                                          "wish-list", "1CCCCCCCCCCCC"
+                                      ])
+
+        # THEN
+        self.assertEqual(0, response.exit_code)
+        self.assert_login_responses_success()
+        self.assertEqual(1, resp.call_count)
+        self.assertIn("List 1CCCCCCCCCCCC: Household (shared) (Private, Collaborative)", response.output)
+        self.assertIn("Members: Jane Doe (owner), John Doe", response.output)
+        self.assertIn("Items: 22, showing all", response.output)
+        self.assertIn("Price: $5.64 - $5.94", response.output)
+        self.assertIn("Needs: 1, Has: 0", response.output)
+        self.assertIn("Added: 2026-09-24", response.output)
+        self.assertIn("Purchased: 2026-09-24", response.output)
+        self.assertIn("Link: https://www.amazon.com/dp/B0C1G62PNP/?coliid=IB096Y9Q2RVX9&colid=1CCCCCCCCCCCC",
+                      response.output)
+        self.assertIn("22 List items parsed", response.output)
+
+    @responses.activate
+    def test_wish_list_command_output_json(self):
+        # GIVEN
+        self.given_unauthenticated_home_page()
+        self.given_login_responses_success()
+        with open(os.path.join(self.RESOURCES_DIR, "lists", "wish-list-shared-scrolled.html"), "r",
+                  encoding="utf-8") as f:
+            responses.add(
+                responses.GET,
+                f"{self.test_config.constants.WISH_LISTS_URL}/1CCCCCCCCCCCC",
+                body=f.read(),
+                status=200,
+            )
+
+        # WHEN
+        response = self.given_runner_with_split_streams().invoke(amazon_orders_cli,
+                                                                 [
+                                                                     "--config-path", self.test_config.config_path,
+                                                                     "--username", "some-username@gmail.com",
+                                                                     "--password", "some-password",
+                                                                     "wish-list", "1CCCCCCCCCCCC",
+                                                                     "--single-page", "--output", "json"])
+
+        # THEN
+        self.assertEqual(0, response.exit_code)
+        lists = json.loads(response.stdout)
+        self.assertEqual(1, len(lists))
+        self.assertEqual("1CCCCCCCCCCCC", lists[0]["list_id"])
+        self.assertEqual(22, len(lists[0]["items"]))
+        self.assertEqual("B0C1G62PNP", lists[0]["items"][0]["asin"])
+        self.assertFalse(lists[0]["items"][0]["purchased"])
+        self.assertNotIn("parsed", lists[0])
+
+    @responses.activate
     def test_rewards_balance_command(self):
         # GIVEN
         self.given_unauthenticated_home_page()

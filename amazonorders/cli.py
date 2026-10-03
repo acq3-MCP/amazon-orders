@@ -19,6 +19,7 @@ from amazonorders.digital_orders import AmazonDigitalOrders
 from amazonorders.exception import AmazonOrdersError, AmazonOrdersAuthError, AmazonOrdersAuthRedirectError
 from amazonorders.gift_cards import AmazonGiftCards
 from amazonorders.orders import AmazonOrders
+from amazonorders.lists import AmazonLists
 from amazonorders.prime import AmazonPrime
 from amazonorders.rewards import AmazonRewards
 from amazonorders.output import OutputFormatter
@@ -513,6 +514,68 @@ def prime_payments(ctx: Context, **kwargs: Any) -> None:
         click.echo(config.output_cls(config).format(payments, kwargs["output"]))
 
         click.echo(f"... {len(payments)} Prime payments parsed.\n", err=True)
+    except AmazonOrdersAuthRedirectError:
+        _prompt_to_reauth_flow()
+    except AmazonOrdersError as e:
+        logger.debug("An error occurred.", exc_info=True)
+        ctx.fail(str(e))
+
+
+@amazon_orders_cli.command()
+@click.pass_context
+@click.option("-o", "--output", type=click.Choice(OutputFormatter.OUTPUT_FORMATS), default="text",
+              help="The output format. Defaults to text.")
+def wish_lists(ctx: Context, **kwargs: Any) -> None:
+    """
+    Get the account's Lists (wish lists), as the Lists page indexes them. The items of a list come from
+    the wish-list command.
+    """
+    amazon_session = ctx.obj["amazon_session"]
+
+    try:
+        _authenticate(amazon_session)
+
+        config = ctx.obj["conf"]
+        amazon_lists = AmazonLists(amazon_session,
+                                   config=config)
+
+        lists = amazon_lists.get_lists()
+
+        click.echo(config.output_cls(config).format(lists, kwargs["output"]))
+
+        click.echo(f"... {len(lists)} Lists parsed.\n", err=True)
+    except AmazonOrdersAuthRedirectError:
+        _prompt_to_reauth_flow()
+    except AmazonOrdersError as e:
+        logger.debug("An error occurred.", exc_info=True)
+        ctx.fail(str(e))
+
+
+@amazon_orders_cli.command()
+@click.pass_context
+@click.argument("list_id")
+@click.option("--single-page", is_flag=True, default=False,
+              help="Only fetch the list page's first batch of items, not the \"See More\" batches after it.")
+@click.option("-o", "--output", type=click.Choice(OutputFormatter.OUTPUT_FORMATS), default="text",
+              help="The output format. Defaults to text.")
+def wish_list(ctx: Context, list_id: str, **kwargs: Any) -> None:
+    """
+    Get a List (wish list) with its items.
+    """
+    amazon_session = ctx.obj["amazon_session"]
+
+    try:
+        _authenticate(amazon_session)
+
+        config = ctx.obj["conf"]
+        amazon_lists = AmazonLists(amazon_session,
+                                   config=config)
+
+        fetched_list = amazon_lists.get_list(list_id, keep_paging=not kwargs["single_page"])
+
+        click.echo(config.output_cls(config).format([fetched_list], kwargs["output"]))
+
+        click.echo(f"... {len(fetched_list.items or [])} List items parsed.\n", err=True)
     except AmazonOrdersAuthRedirectError:
         _prompt_to_reauth_flow()
     except AmazonOrdersError as e:

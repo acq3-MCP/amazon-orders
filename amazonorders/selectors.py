@@ -340,3 +340,73 @@ class Selectors:
     # widget for the library's client, from datacenter and residential addresses alike, while the same
     # session read the retail pages fine: an "Oops." heading over "there's a problem with this page"
     PRIME_PAYMENTS_ERROR_SELECTOR = Selector("h1.a-text-bold", text_contains="Oops.")
+
+    #####################################
+    # CSS selectors for Lists (wish lists)
+    #
+    # A list page (/hz/wishlist/ls/<listId>) is server-rendered. Its left
+    # nav (div#your-lists-nav) indexes every list on the account, one
+    # div.wl-list per list (the one shown is .selected), each an anchor
+    # whose id carries the list ID. The page's own list is described by
+    # div#list-header (the name in span#profile-list-name, the members of a
+    # collaborative list in the "List members" popover rows), and its items
+    # render in ul#g-items as one li[data-itemid] per item, every field
+    # tagged with an id suffixed by the item ID (itemName_<id>,
+    # itemPrice_<id>, ...). The page renders the first batch of items only;
+    # the rest load by infinite scroll from the "See More" link, which also
+    # serves as the no-JS fallback.
+    #####################################
+
+    WISH_LIST_NAV_SELECTOR = "div#your-lists-nav"
+    WISH_LIST_NAV_ENTRY_SELECTOR = "div.wl-list"
+    WISH_LIST_NAV_SELECTED_ENTRY_SELECTOR = "div.wl-list.selected"
+    WISH_LIST_HEADER_SELECTOR = "div#list-header"
+    WISH_LIST_ITEMS_SELECTOR = "ul#g-items"
+    WISH_LIST_ITEM_SELECTOR = "li[data-itemid]"
+    # The "See More" control at the end of the rendered batch, a no-JS anchor (its JS twin holds the
+    # same URL in a hidden input of a scroll-state form; every batch appends a form of its own, so a
+    # scrolled page holds several, the last of which is current, and the last batch's form carries
+    # an empty paginationToken), and the marker the last batch ends with instead of a control
+    WISH_LIST_NEXT_PAGE_LINK_SELECTOR = "a.wl-see-more[href]"
+    WISH_LIST_NEXT_PAGE_INPUT_SELECTOR = "input[name='showMoreUrl']"
+    WISH_LIST_END_OF_LIST_SELECTOR = "div#endOfListMarker"
+
+    FIELD_WISH_LIST_ENTRY_LINK_SELECTOR = "a[id^='wl-list-link-']"
+    FIELD_WISH_LIST_ENTRY_TITLE_SELECTOR = "span[id^='wl-list-entry-title-']"
+    # "Default List" or "Collaborator" under the title (one id for both, so the text decides)
+    FIELD_WISH_LIST_ENTRY_LABEL_SELECTOR = "span#list-default-collaborator-label"
+    FIELD_WISH_LIST_ENTRY_PRIVACY_SELECTOR = "div[id^='wl-list-entry-privacy-']"
+    FIELD_WISH_LIST_ENTRY_COLLABORATIVE_ICON_SELECTOR = "img#wl-collaborated-list-icon"
+
+    FIELD_WISH_LIST_NAME_SELECTOR = "span#profile-list-name"
+    FIELD_WISH_LIST_ID_SELECTOR = "input[name='listExternalId']"
+    FIELD_WISH_LIST_TYPE_SELECTOR = "input[name='listType']"
+    # The item filter ("all", "unpurchased", "purchased") and sort the page rendered with
+    FIELD_WISH_LIST_FILTER_SELECTOR = "form#wl-item-search input[name='filter']"
+    FIELD_WISH_LIST_SORT_SELECTOR = "form#wl-item-search input[name='sort']"
+    WISH_LIST_COLLABORATOR_ROW_SELECTOR = "div[id^='manage-collaborators-row-']"
+    FIELD_WISH_LIST_COLLABORATOR_NAME_SELECTOR = "span[id^='manage-collaborator-profile_']"
+    FIELD_WISH_LIST_COLLABORATOR_ROLE_SELECTOR = "div.a-span-last span"
+
+    FIELD_WISH_LIST_ITEM_EXTERNAL_ID_SELECTOR = "input[name='itemExternalId']"
+    FIELD_WISH_LIST_ITEM_NAME_SELECTOR = "a[id^='itemName_']"
+    FIELD_WISH_LIST_ITEM_BYLINE_SELECTOR = "span[id^='item-byline-']"
+    FIELD_WISH_LIST_ITEM_IMAGE_SELECTOR = "div[id^='itemImage_'] img"
+    FIELD_WISH_LIST_ITEM_PRICE_SELECTOR = "span[id^='itemPrice_'] span.a-offscreen"
+    FIELD_WISH_LIST_ITEM_MIN_PRICE_SELECTOR = "span[id^='itemMinPrice_'] span.a-offscreen"
+    FIELD_WISH_LIST_ITEM_MAX_PRICE_SELECTOR = "span[id^='itemMaxPrice_'] span.a-offscreen"
+    FIELD_WISH_LIST_ITEM_VARIATION_SELECTOR = "span#twisterText"
+    FIELD_WISH_LIST_ITEM_NOTE_SELECTOR = "span[id^='itemComment_']"
+    FIELD_WISH_LIST_ITEM_REQUESTED_SELECTOR = "span[id^='itemRequested_']"
+    FIELD_WISH_LIST_ITEM_PURCHASED_SELECTOR = "span[id^='itemPurchased_']"
+    FIELD_WISH_LIST_ITEM_PRIORITY_SELECTOR = "span[id^='itemPriority_']"
+    FIELD_WISH_LIST_ITEM_PRIORITY_LABEL_SELECTOR = "span[id^='itemPriorityLabel_']"
+    FIELD_WISH_LIST_ITEM_ADDED_DATE_SELECTOR = "span[id^='itemAddedDate_']"
+    FIELD_WISH_LIST_ITEM_PURCHASED_DATE_SELECTOR = "span[id^='itemPurchasedDate_']"
+    # The "This item is marked as purchased" alert, rendered (hidden) on an item whose quantity had has
+    # reached its quantity wanted, and not on one bought once whose wanted quantity was then raised
+    FIELD_WISH_LIST_ITEM_PURCHASED_MARKER_SELECTOR = "div[id^='itemGiftedFromElsewhereSuccessAlert_']"
+    FIELD_WISH_LIST_ITEM_RATING_SELECTOR = "i[id^='review_stars_'] span.a-icon-alt"
+    FIELD_WISH_LIST_ITEM_REVIEW_COUNT_SELECTOR = "a[id^='review_count_']"
+    FIELD_WISH_LIST_ITEM_PRIME_BADGE_SELECTOR = "i.a-icon-prime"
+    FIELD_WISH_LIST_ITEM_ACTION_SELECTOR = "div[id^='itemAction_'] .a-button-text"
