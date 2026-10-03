@@ -333,6 +333,40 @@ class TestOrders(UnitTestCase):
         self.assertEqual(1, resp2.call_count)
 
     @responses.activate
+    def test_get_order_history_off_origin_next_page(self):
+        # GIVEN a history page whose pager link names another host
+        self.amazon_session.is_authenticated = True
+        year = 2010
+        with open(os.path.join(self.RESOURCES_DIR, "orders", f"order-history-{year}-0.html"), "r",
+                  encoding="utf-8") as f:
+            html = f.read().replace("/your-orders/orders?timeFilter=year-2010&amp;startIndex=10",
+                                    "https://evil.example/your-orders/orders?timeFilter=year-2010&amp;startIndex=10")
+        resp1 = responses.add(responses.GET, f"{self.test_config.constants.ORDER_HISTORY_URL}?timeFilter=year-{year}",
+                              body=html, status=200)
+        evil_resp = responses.add(responses.GET,
+                                  "https://evil.example/your-orders/orders?timeFilter=year-2010&startIndex=10"
+                                  "&ref_=ppx_yo2ov_dt_b_pagination_1_2", body="", status=200)
+
+        # WHEN
+        with self.assertLogs("amazonorders.util", level="WARNING"):
+            orders = self.amazon_orders.get_order_history(year=year)
+
+        # THEN the first page's Orders are returned, the other host is never requested, and the pull says why
+        self.assertEqual(10, len(orders))
+        self.assertEqual(1, resp1.call_count)
+        self.assertEqual(0, evil_resp.call_count)
+        self.assertEqual(1, self.amazon_orders.last_history_pull.pages_walked)
+        self.assertEqual("off_origin_next_page", self.amazon_orders.last_history_pull.stop_reason)
+
+        # WHEN the page is parsed without a session
+        with self.assertLogs("amazonorders.util", level="WARNING"):
+            result = AmazonOrders.parse_order_history_page(html, self.test_config)
+
+        # THEN the pager link is dropped there too
+        self.assertEqual("orders", result.page_type)
+        self.assertIsNone(result.next_page_url)
+
+    @responses.activate
     def test_get_order_history_fresh(self):
         # GIVEN
         self.amazon_session.is_authenticated = True

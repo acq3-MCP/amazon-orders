@@ -5,13 +5,17 @@ import importlib
 import logging
 import re
 from datetime import date, datetime
-from typing import List, Union, Optional, Callable, Any
+from typing import TYPE_CHECKING, List, Union, Optional, Callable, Any
+from urllib.parse import urlparse
 
 from bs4 import Tag, BeautifulSoup
 from dateutil import parser
 from requests import Response
 
 from amazonorders.selectors import Selector
+
+if TYPE_CHECKING:
+    from amazonorders.conf import AmazonOrdersConfig
 
 logger = logging.getLogger(__name__)
 
@@ -240,3 +244,36 @@ def cleanup_html_text(text: str) -> str:
     if not text.endswith("."):
         text += "."
     return text
+
+
+def _site_host(netloc: str) -> str:
+    """The host of a URL's network location, lowercased, without a ``www.`` prefix or a port."""
+    host = netloc.lower().split("@")[-1].split(":")[0]
+    return host[4:] if host.startswith("www.") else host
+
+
+def resolve_site_url(value: Optional[str],
+                     config: "AmazonOrdersConfig") -> Optional[str]:
+    """
+    Make a page-supplied URL (a pager link, a "See More" control) absolute against ``BASE_URL``, refusing
+    one that names another origin. A page must not send the session anywhere but the site, so an absolute
+    value is kept only when its scheme matches and its host is the site's own (``www.`` is ignored on
+    either side, so ``amazon.com`` and ``www.amazon.com`` are one host); anything else is logged and
+    dropped, and the caller treats it as having no next page.
+
+    :param value: The URL as the page carries it, relative or absolute.
+    :param config: The config whose ``BASE_URL`` is the site.
+    :return: The absolute URL, or ``None`` when the value is empty or on another origin.
+    """
+    value = (value or "").strip()
+    if not value:
+        return None
+
+    base = urlparse(config.constants.BASE_URL)
+    url = value if value.startswith("http") else f"{config.constants.BASE_URL}{value}"
+    target = urlparse(url)
+    if target.scheme != base.scheme or _site_host(target.netloc) != _site_host(base.netloc):
+        logger.warning(f"Ignoring a page-supplied URL on another origin: {url!r}")
+        return None
+
+    return url

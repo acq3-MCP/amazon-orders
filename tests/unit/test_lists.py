@@ -413,6 +413,87 @@ class TestLists(UnitTestCase):
         self.assertEqual(SHARED_LIST_ID, result.wish_list.list_id)
         self.assertEqual(10, len(result.items))
 
+    def test_parse_wish_list_page_next_page_off_origin(self):
+        # GIVEN a page whose "See More" anchor names another host
+        off_origin = "https://evil.example/hz/wishlist/slv/items?filter=all&paginationToken=TOKEN_PAGE_2"
+        parsed = BeautifulSoup(self._read_resource("wish-list-shared.html"), self.test_config.bs4_parser)
+        parsed.select_one("a.wl-see-more")["href"] = off_origin
+
+        # WHEN
+        with self.assertLogs("amazonorders.util", level="WARNING"):
+            result = AmazonLists.parse_wish_list_page(str(parsed), self.test_config)
+
+        # THEN the URL is dropped and reported, the items still parse
+        self.assertEqual(10, len(result.items))
+        self.assertIsNone(result.next_page_url)
+        self.assertTrue(result.next_page_off_origin)
+
+        # WHEN the anchor is gone and the hidden input carries the off-origin URL instead
+        parsed.select_one("a.wl-see-more").decompose()
+        parsed.select_one("input[name='showMoreUrl']")["value"] = off_origin
+        with self.assertLogs("amazonorders.util", level="WARNING"):
+            result = AmazonLists.parse_wish_list_page(str(parsed), self.test_config)
+
+        # THEN the same
+        self.assertIsNone(result.next_page_url)
+        self.assertTrue(result.next_page_off_origin)
+
+        # WHEN the page's own host spelled without www. is used
+        bare_host_url = NEXT_PAGE_URL.replace("www.amazon.com", "amazon.com")
+        parsed.select_one("input[name='showMoreUrl']")["value"] = bare_host_url
+        result = AmazonLists.parse_wish_list_page(str(parsed), self.test_config)
+
+        # THEN it is the site, and followed as given
+        self.assertEqual(bare_host_url, result.next_page_url)
+        self.assertFalse(result.next_page_off_origin)
+
+    @responses.activate
+    def test_get_list_off_origin_next_page(self):
+        # GIVEN a list page whose "See More" anchor names another host
+        self.amazon_session.is_authenticated = True
+        html = self._read_resource("wish-list-shared.html")
+        parsed = BeautifulSoup(html, self.test_config.bs4_parser)
+        parsed.select_one("a.wl-see-more")["href"] = "https://evil.example/hz/wishlist/slv/items?filter=all"
+        off_origin = "https://evil.example/hz/wishlist/slv/items?filter=all"
+        parsed.select_one("input[name='showMoreUrl']")["value"] = off_origin
+        page_resp = responses.add(responses.GET, f"{self.test_config.constants.WISH_LISTS_URL}/{SHARED_LIST_ID}",
+                                  body=str(parsed), status=200)
+        evil_resp = responses.add(responses.GET, "https://evil.example/hz/wishlist/slv/items?filter=all",
+                                  body="", status=200)
+
+        # WHEN
+        with self.assertLogs("amazonorders.util", level="WARNING"):
+            wish_list = self.amazon_lists.get_list(SHARED_LIST_ID)
+
+        # THEN the first batch is returned, the other host is never requested, and the pull says why it stopped
+        self.assertEqual(10, len(wish_list.items))
+        self.assertEqual(1, page_resp.call_count)
+        self.assertEqual(0, evil_resp.call_count)
+        self.assertEqual(1, self.amazon_lists.last_list_pull.pages_walked)
+        self.assertEqual("off_origin_next_page", self.amazon_lists.last_list_pull.stop_reason)
+
+    @responses.activate
+    def test_get_list_off_origin_next_page_in_batch(self):
+        # GIVEN the "See More" batch's own next URL names another host
+        self.amazon_session.is_authenticated = True
+        self._given_list_page_exists(SHARED_LIST_ID, "wish-list-shared.html")
+        batch = BeautifulSoup(self._read_resource("wish-list-shared-batch-last.html"), self.test_config.bs4_parser)
+        batch.select_one("div#endOfListMarker").decompose()
+        batch.select_one("input[name='showMoreUrl']")["value"] = "https://evil.example/hz/wishlist/slv/items?a=b"
+        batch_resp = responses.add(responses.GET, NEXT_PAGE_URL, body=str(batch), status=200)
+        evil_resp = responses.add(responses.GET, "https://evil.example/hz/wishlist/slv/items?a=b", body="", status=200)
+
+        # WHEN
+        with self.assertLogs("amazonorders.util", level="WARNING"):
+            wish_list = self.amazon_lists.get_list(SHARED_LIST_ID)
+
+        # THEN
+        self.assertEqual(12, len(wish_list.items))
+        self.assertEqual(1, batch_resp.call_count)
+        self.assertEqual(0, evil_resp.call_count)
+        self.assertEqual(2, self.amazon_lists.last_list_pull.pages_walked)
+        self.assertEqual("off_origin_next_page", self.amazon_lists.last_list_pull.stop_reason)
+
     def test_parse_wish_list_page_not_wish_list(self):
         # GIVEN the pages a session-expired or challenged browser fetch supplies instead
         for html_file in ["signin.html", "post-signin-captcha-1.html", "acic-challenge.html", "waf-challenge.html"]:

@@ -27,7 +27,8 @@ class WishListPageResult:
                  wish_list: Optional[WishList],
                  lists: List[WishList],
                  next_page_url: Optional[str],
-                 page_type: str) -> None:
+                 page_type: str,
+                 next_page_off_origin: bool = False) -> None:
         #: The list the page shows, with :attr:`~amazonorders.entity.wish_list.WishList.items` holding the
         #: items this page rendered (the first batch; see :attr:`next_page_url`). ``None`` unless
         #: :attr:`page_type` is ``wish_list``.
@@ -39,8 +40,12 @@ class WishListPageResult:
         #: items of an items batch.
         self.items: List[WishListItem] = wish_list.items if wish_list is not None and wish_list.items else []
         #: The absolute URL of the "See More" control, which serves the next batch of items. ``None`` at the end
-        #: of the list (the last batch renders an end-of-list marker in place of the control).
+        #: of the list (the last batch renders an end-of-list marker in place of the control), and ``None`` when
+        #: the control's URL names another origin (see :attr:`next_page_off_origin`).
         self.next_page_url: Optional[str] = next_page_url
+        #: Whether the page carried a "See More" URL on another origin, which is dropped rather than followed:
+        #: a page must not send the session anywhere but the site.
+        self.next_page_off_origin: bool = next_page_off_origin
         #: What the page is: ``wish_list`` (a list page, with its nav, header, and first batch of items),
         #: ``items`` (a batch of items with no nav or header, as the "See More" control serves), or
         #: ``not_wish_list`` (a sign-in, Captcha, or challenge page; the supplied HTML is not a Lists page
@@ -67,8 +72,9 @@ class WishListPullResult:
         self.pages_walked: int = pages_walked
         #: How many items were parsed.
         self.items_parsed: int = items_parsed
-        #: Why the walk stopped: ``no_more_pages`` (no "See More" control rendered) or
-        #: ``single_page_requested`` (``keep_paging`` was ``False``).
+        #: Why the walk stopped: ``no_more_pages`` (the end of the list), ``single_page_requested``
+        #: (``keep_paging`` was ``False``), or ``off_origin_next_page`` (the "See More" URL named another
+        #: origin and was not followed, so the items are those of the pages before it).
         self.stop_reason: str = stop_reason
 
     def __repr__(self) -> str:
@@ -79,7 +85,7 @@ class WishListPullResult:
 
 
 def _parse_items(parsed: Tag,
-                 config: AmazonOrdersConfig) -> Tuple[List[WishListItem], Optional[str]]:
+                 config: AmazonOrdersConfig) -> Tuple[List[WishListItem], Optional[str], bool]:
     """
     Parse the items a page or batch rendered, and the URL of the next batch.
 
@@ -89,7 +95,8 @@ def _parse_items(parsed: Tag,
 
     :param parsed: The parsed page or batch.
     :param config: The config to use.
-    :return: The items in page order, and the absolute URL of the next batch (``None`` at the end of the list).
+    :return: The items in page order, the absolute URL of the next batch (``None`` at the end of the list, or
+        when it names another origin), and whether it named another origin.
     """
     items: List[WishListItem] = []
     for item_tag in util.select(parsed, config.selectors.WISH_LIST_ITEM_SELECTOR):
@@ -99,11 +106,13 @@ def _parse_items(parsed: Tag,
             e.meta = {**{"partial_items": items}, **(e.meta or {})}
             raise
 
-    return items, _parse_next_page_url(parsed, config)
+    next_page_url, off_origin = _parse_next_page_url(parsed, config)
+
+    return items, next_page_url, off_origin
 
 
 def _parse_next_page_url(parsed: Tag,
-                         config: AmazonOrdersConfig) -> Optional[str]:
+                         config: AmazonOrdersConfig) -> Tuple[Optional[str], bool]:
     """
     Find the URL of the next batch of items, or ``None`` at the end of the list.
 
@@ -111,13 +120,15 @@ def _parse_next_page_url(parsed: Tag,
     of it, the control's no-JS anchor carries the URL, and failing that its JS twin, the last
     ``showMoreUrl`` input (a scrolled page keeps one per batch loaded, so the first is stale); an
     input whose URL carries an empty pagination token is the last batch's and also means the end.
+    A URL on another origin is dropped (:func:`~amazonorders.util.resolve_site_url`) and reported.
 
     :param parsed: The parsed page or batch.
     :param config: The config to use.
-    :return: The absolute URL of the next batch, or ``None`` at the end of the list.
+    :return: The absolute URL of the next batch (``None`` at the end of the list, or when it names another
+        origin), and whether it named another origin.
     """
     if util.select_one(parsed, config.selectors.WISH_LIST_END_OF_LIST_SELECTOR) is not None:
-        return None
+        return None, False
 
     next_page_url = None
     link_tag = util.select_one(parsed, config.selectors.WISH_LIST_NEXT_PAGE_LINK_SELECTOR)
@@ -129,16 +140,15 @@ def _parse_next_page_url(parsed: Tag,
             next_page_url = str(input_tags[-1]["value"])
 
     if not next_page_url:
-        return None
+        return None, False
 
     query = parse_qs(urlparse(next_page_url).query, keep_blank_values=True)
     if "paginationToken" in query and not any(query["paginationToken"]):
-        return None
+        return None, False
 
-    if not next_page_url.startswith("http"):
-        next_page_url = f"{config.constants.BASE_URL}{next_page_url}"
+    resolved = util.resolve_site_url(next_page_url, config)
 
-    return next_page_url
+    return resolved, resolved is None
 
 
 def _parse_wish_list_page(parsed: Tag,
@@ -162,8 +172,9 @@ def _parse_wish_list_page(parsed: Tag,
             return WishListPageResult(wish_list=None, lists=[], next_page_url=None, page_type="not_wish_list")
 
         if util.select_one(parsed, config.selectors.WISH_LIST_ITEM_SELECTOR):
-            items, next_page_url = _parse_items(parsed, config)
-            result = WishListPageResult(wish_list=None, lists=[], next_page_url=next_page_url, page_type="items")
+            items, next_page_url, off_origin = _parse_items(parsed, config)
+            result = WishListPageResult(wish_list=None, lists=[], next_page_url=next_page_url, page_type="items",
+                                        next_page_off_origin=off_origin)
             result.items = items
             return result
 
@@ -185,12 +196,14 @@ def _parse_wish_list_page(parsed: Tag,
                 break
 
     next_page_url = None
+    off_origin = False
     if selected_tag is not None:
         wish_list = WishList(selected_tag, config, page=parsed)
-        items, next_page_url = _parse_items(parsed, config)
+        items, next_page_url, off_origin = _parse_items(parsed, config)
         wish_list.items = items
 
-    return WishListPageResult(wish_list=wish_list, lists=lists, next_page_url=next_page_url, page_type="wish_list")
+    return WishListPageResult(wish_list=wish_list, lists=lists, next_page_url=next_page_url, page_type="wish_list",
+                              next_page_off_origin=off_origin)
 
 
 class AmazonLists:
@@ -276,13 +289,15 @@ class AmazonLists:
 
         self.last_list_pull = None
 
-        wish_list, first_page_next_url = self._get_list_page(list_id)
+        wish_list, first_page_next_url, off_origin = self._get_list_page(list_id)
         items: List[WishListItem] = wish_list.items if wish_list.items is not None else []
         pages_walked = 1
-        stop_reason = ""
+        stop_reason = "off_origin_next_page" if off_origin else ""
 
         if next_page_url is None:
             next_page_url = first_page_next_url
+        else:
+            stop_reason = ""
 
         while next_page_url:
             if not keep_paging:
@@ -297,7 +312,7 @@ class AmazonLists:
             pages_walked += 1
 
             try:
-                page_items, next_page_url = _parse_items(page_response.parsed, self.config)
+                page_items, next_page_url, off_origin = _parse_items(page_response.parsed, self.config)
             except AmazonOrdersError as e:
                 # The batch's partial items follow the items of the pages before it
                 e.meta = {**(e.meta or {}), **meta,
@@ -305,6 +320,8 @@ class AmazonLists:
                 raise
 
             items.extend(page_items)
+            if off_origin:
+                stop_reason = "off_origin_next_page"
 
         if not stop_reason:
             stop_reason = "no_more_pages"
@@ -318,13 +335,14 @@ class AmazonLists:
         return wish_list
 
     def _get_list_page(self,
-                       list_id: str) -> Tuple[WishList, Optional[str]]:
+                       list_id: str) -> Tuple[WishList, Optional[str], bool]:
         """
         Fetch and parse the page of a list, verifying it is the list asked for: Amazon answers an unknown or
         inaccessible list ID with another list's page rather than an error.
 
         :param list_id: The list's ID.
-        :return: The list, with the page's first batch of items, and the URL of the next batch.
+        :return: The list, with the page's first batch of items, the URL of the next batch, and whether that URL
+            named another origin.
         """
         page_response = self.amazon_session.get(f"{self.config.constants.WISH_LISTS_URL}/{list_id}")
         self.amazon_session.check_response(page_response)
@@ -339,7 +357,7 @@ class AmazonLists:
             raise AmazonOrdersNotFoundError(f"Amazon rendered list {result.wish_list.list_id} instead of list "
                                             f"{list_id}, which may not exist or may not be shared with this account.")
 
-        return result.wish_list, result.next_page_url
+        return result.wish_list, result.next_page_url, result.next_page_off_origin
 
     @staticmethod
     def parse_wish_list_page(html: str,

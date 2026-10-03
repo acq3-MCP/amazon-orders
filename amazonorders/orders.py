@@ -99,8 +99,9 @@ class OrderHistoryPullResult:
         #: window, ``rows_parsed`` matching this value is a parse-completeness check.
         self.header_count: Optional[int] = header_count
         #: Why paging stopped: ``no_more_pages`` (the final page was reached), ``empty_history``
-        #: (the window contains no Orders), or ``single_page_requested`` (``keep_paging`` was
-        #: ``False``).
+        #: (the window contains no Orders), ``single_page_requested`` (``keep_paging`` was
+        #: ``False``), or ``off_origin_next_page`` (the pager link named another origin and was not
+        #: followed, so the Orders are those of the pages before it).
         self.stop_reason: str = stop_reason
 
     def __repr__(self) -> str:
@@ -127,7 +128,8 @@ class OrderHistoryPageResult:
         #: The Order count the page's own header reports for the window ("N orders placed in …"),
         #: or ``None`` if the header could not be parsed.
         self.header_count: Optional[int] = header_count
-        #: The absolute URL of the next history page, or ``None`` on the final page.
+        #: The absolute URL of the next history page, or ``None`` on the final page. Also ``None`` when the
+        #: pager link names another origin, which is logged and dropped rather than followed.
         self.next_page_url: Optional[str] = next_page_url
         #: What the page is: ``orders`` (Order rows were parsed), ``empty_window`` (the page's own
         #: count confirms there are no Orders at this index), ``not_order_history`` (a sign-in,
@@ -177,15 +179,18 @@ class AmazonOrders:
         self.last_history_pull: Optional[OrderHistoryPullResult] = None
 
     @staticmethod
-    def _parse_next_page_url(parsed: Tag,
-                             config: AmazonOrdersConfig) -> Optional[str]:
+    def _parse_next_page_href(parsed: Tag,
+                              config: AmazonOrdersConfig) -> Optional[str]:
         next_page_tag = util.select_one(parsed, config.selectors.NEXT_PAGE_LINK_SELECTOR)
         if not next_page_tag:
             return None
-        next_page = str(next_page_tag["href"])
-        if not next_page.startswith("http"):
-            next_page = f"{config.constants.BASE_URL}{next_page}"
-        return next_page
+        return str(next_page_tag["href"])
+
+    @staticmethod
+    def _parse_next_page_url(parsed: Tag,
+                             config: AmazonOrdersConfig) -> Optional[str]:
+        # A pager link on another origin is dropped, not followed (see util.resolve_site_url)
+        return util.resolve_site_url(AmazonOrders._parse_next_page_href(parsed, config), config)
 
     @staticmethod
     def parse_order_history(html: str,
@@ -467,9 +472,10 @@ class AmazonOrders:
 
             next_page = None
             if keep_paging:
-                next_page = self._parse_next_page_url(page_response.parsed, self.config)
+                next_page_href = self._parse_next_page_href(page_response.parsed, self.config)
+                next_page = util.resolve_site_url(next_page_href, self.config)
                 if not next_page:
-                    stop_reason = "no_more_pages"
+                    stop_reason = "off_origin_next_page" if next_page_href else "no_more_pages"
                     logger.debug("No next page")
             else:
                 stop_reason = "single_page_requested"
