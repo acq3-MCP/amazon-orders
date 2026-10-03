@@ -6,6 +6,7 @@ from datetime import date
 from bs4 import BeautifulSoup
 
 from amazonorders.selectors import Selector
+from amazonorders import util
 from amazonorders.util import to_type, to_date, cleanup_html_text, select, select_one
 from tests.unittestcase import UnitTestCase
 
@@ -131,3 +132,35 @@ class TestUtil(UnitTestCase):
 
         # THEN
         self.assertIsNone(tag)
+
+    def test_resolve_site_url(self):
+        base = self.test_config.constants.BASE_URL
+
+        # relative values resolve against the site
+        self.assertEqual(f"{base}/hz/wishlist/slv/items?filter=all&paginationToken=abc",
+                         util.resolve_site_url("/hz/wishlist/slv/items?filter=all&paginationToken=abc",
+                                               self.test_config))
+        # absolute values on the site are kept, with or without www., ignoring case and a port
+        self.assertEqual("https://www.amazon.com/your-orders/orders?startIndex=10",
+                         util.resolve_site_url("https://www.amazon.com/your-orders/orders?startIndex=10",
+                                               self.test_config))
+        self.assertEqual("https://amazon.com/your-orders/orders?startIndex=10",
+                         util.resolve_site_url("https://amazon.com/your-orders/orders?startIndex=10",
+                                               self.test_config))
+        self.assertEqual("https://WWW.Amazon.com:443/x",
+                         util.resolve_site_url("https://WWW.Amazon.com:443/x", self.test_config))
+        # empty is nothing
+        self.assertIsNone(util.resolve_site_url("", self.test_config))
+        self.assertIsNone(util.resolve_site_url("   ", self.test_config))
+        self.assertIsNone(util.resolve_site_url(None, self.test_config))
+
+        # another host, a lookalike host, a userinfo trick, or another scheme is dropped with a warning
+        for value in ["https://evil.example/hz/wishlist/slv/items?filter=all",
+                      "https://www.amazon.com.evil.example/your-orders/orders",
+                      "https://notamazon.com/your-orders/orders",
+                      "https://www.amazon.com@evil.example/your-orders/orders",
+                      "http://www.amazon.com/your-orders/orders"]:
+            with self.subTest(value=value):
+                with self.assertLogs("amazonorders.util", level="WARNING") as logs:
+                    self.assertIsNone(util.resolve_site_url(value, self.test_config))
+                self.assertIn("another origin", logs.output[0])
