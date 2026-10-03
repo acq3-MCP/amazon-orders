@@ -26,7 +26,6 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - `prime-payments` CLI command, with `--output`, and `OutputFormatter.prime_payment_text()`.
 - `parse_prime_payments_page()` classifies Membership Central's own error page (a 200 served in place of the widget when the service refuses the library's client, which it does from datacenter and residential addresses alike while a browser on the same account gets the payments) as `page_type="error"` instead of raising "Amazon changed the HTML", and `get_prime_payments()`, now documented as best-effort, raises a distinct `AmazonOrdersError` for it that points at the parse-from-string path.
 - `Selectors.AUTH_CHALLENGE_PAGE_SELECTORS`, the sign-in/Captcha/challenge page selectors the parse-from-string entry points share; `parse_order_history_page()` now uses it in place of its inline list.
-- `util.ORDER_NUMBER_REGEX`, the physical-or-digital Order number pattern, moved from `entity.gift_card_activity` (which still imports it) so entities can share it.
 - `--output` on the `digital-orders`, `gift-card-activity`, and `rewards-balance` CLI commands, rendering their entities as `text`, `json`, `yaml`, or `csv` like the upstream commands; their progress messages now go to `stderr`.
 - `OutputFormatter.gift_card_activity_text()` and `OutputFormatter.rewards_balance_text()`, the text renderers those commands previously kept in the CLI.
 
@@ -44,7 +43,6 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - `AmazonOrders.last_history_pull` is no longer populated when a `full_details` pull fails mid-fetch, honoring its stays-`None`-on-failure contract.
 - `digital-orders --year --all` now fails explicitly instead of silently ignoring `--year`.
 - `get_gift_card_activity()` logs a warning when activity dates fail to parse (the `days` window cannot apply to such rows), instead of silently walking the full ledger.
-- `Parsable.to_currency()` is now a static method (it never used instance state), usable without constructing an entity.
 - `Parsable.safe_parse()` now also degrades a field on `TypeError` and `RecursionError`, which is what page-embedded JSON produces when it is valid but not the expected shape (the Order address fallback wraps it in `BeautifulSoup`) or nested deeply enough to exhaust the interpreter's stack (`json.loads` raises `RecursionError`, a `RuntimeError`, not a `ValueError`). Previously either aborted the whole entity instead of degrading one field. Required-field errors still propagate.
 - `AmazonRewards` now raises `AmazonOrdersError` rather than a bare `RecursionError` on deeply nested page data.
 
