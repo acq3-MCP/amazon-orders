@@ -15,7 +15,8 @@ lives inside it.
 
 Sanitization applied (DOM structure is byte-accurate to the captures):
 
-- Order IDs remapped to fake values — physical to `111-55009xx-24786xx`, digital to
+- Order IDs remapped to fake values — physical to `111-55009xx-24786xx`, the four older
+  four-digit-prefix IDs on the last page to `4000-10000x-200000x`, digital to
   `D01-100xxxx-200xxxx` (repeats preserved; the digital order the 2026-04-09 debit anchors
   to keeps the same fake ID as its fixtures in `tests/resources/digitalorders/`)
 - Claim code visible last-4 remapped (`xxxx-xxxxxx-TSnn`) and serial numbers replaced with
@@ -26,3 +27,4 @@ Sanitization applied (DOM structure is byte-accurate to the captures):
 - Inline `<script>` bodies emptied (they carried customer/session identifiers)
 - The pagination `next`/`prev` tokens replaced with fakes (the real tokens encode an
   account ID)
+- Blank lines and trailing whitespace removed (parsing is unaffected)
