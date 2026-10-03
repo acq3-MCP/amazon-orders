@@ -2,6 +2,7 @@ __copyright__ = "Copyright (c) 2024-2025 Alex Laird"
 __license__ = "MIT"
 
 import logging
+import re
 from datetime import date
 from typing import Optional, Union
 
@@ -10,7 +11,6 @@ from bs4 import Tag
 from amazonorders.conf import AmazonOrdersConfig
 from amazonorders.entity.parsable import Parsable
 from amazonorders.exception import AmazonOrdersError
-from amazonorders.util import ORDER_NUMBER_REGEX
 
 logger = logging.getLogger(__name__)
 
@@ -43,11 +43,11 @@ class GiftCardActivity(Parsable):
         self.is_credit: bool = bool(self.amount and self.amount > 0)
         #: The Gift Card balance after this activity was applied.
         self.closing_balance: Optional[float] = self.safe_parse(self._parse_closing_balance)
-        #: The Order number the GiftCardActivity references (physical ``111-…`` or digital
-        #: ``D01-…`` IDs). ``None`` when the row renders no Order anchor: claim code redemptions
-        #: and some refund rows, but also some applied-to-order debit rows (observed in the wild
-        #: on small amounts, likely digital orders), so ``None`` on a debit is expected page
-        #: behavior, not data loss.
+        #: The Order number the GiftCardActivity references, read from the row's Order link (physical
+        #: ``111-…``, digital ``D01-…``, or older ``4000-…`` IDs). ``None`` when the row renders no
+        #: Order anchor: claim code redemptions and some refund rows, but also some applied-to-order
+        #: debit rows (observed in the wild on small amounts, likely digital orders), so ``None`` on a
+        #: debit is expected page behavior, not data loss.
         self.order_number: Optional[str] = self.safe_parse(self._parse_order_number)
         #: The Order details link. ``None`` whenever :attr:`order_number` is ``None``.
         self.order_details_link: Optional[str] = self.safe_parse(self._parse_order_details_link)
@@ -81,15 +81,16 @@ class GiftCardActivity(Parsable):
     def _parse_order_number(self) -> Optional[str]:
         value = self.simple_parse(self.config.selectors.FIELD_GIFT_CARD_ACTIVITY_ORDER_NUMBER_SELECTOR)
 
-        if value is None:
-            value = self.description
-
-        if value is None:
+        if not value:
             return None
 
-        match = ORDER_NUMBER_REGEX.search(str(value))
+        if not re.fullmatch(r"[A-Z0-9-]+", value):
+            logger.warning(f"GiftCardActivity.order_number found but not an Order number: {value!r}. "
+                           f"Check if Amazon changed the HTML.")
 
-        return match.group(1) if match else None
+            return None
+
+        return value
 
     def _parse_order_details_link(self) -> Optional[str]:
         if not self.order_number:

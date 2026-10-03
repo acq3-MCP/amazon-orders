@@ -38,6 +38,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Fixed
 
+- `GiftCardActivity.order_number` is now read from the row's Order link, so older four-digit-prefix Order numbers (`4000-…`, seen on 2015 ledger rows) resolve too; they previously came back `None`, losing the Order reference. A link whose text is not an Order number yields `None` with a warning.
 - `GiftCardActivity.order_number` now resolves digital (`D01-…`) Order IDs — ledger rows anchored to digital orders previously lost their Order reference entirely.
 - Row-level parse failures during `get_gift_card_activity()` pagination now carry the documented resume metadata (`next_page_url`, `partial_activity`) instead of raising without `meta`.
 - `AmazonOrders.last_history_pull` is no longer populated when a `full_details` pull fails mid-fetch, honoring its stays-`None`-on-failure contract.
