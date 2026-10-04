@@ -6,7 +6,7 @@ import concurrent.futures
 import datetime
 import logging
 from typing import Any, Callable, List, Optional
-from urllib.parse import quote
+from urllib.parse import parse_qsl, quote, urlencode, urlsplit, urlunsplit
 
 from bs4 import BeautifulSoup, Tag
 
@@ -55,6 +55,44 @@ def _parse_order_history(parsed: Tag,
             raise AmazonOrdersError("Could not parse Order history. Check if Amazon changed the HTML.")
 
     return order_tags
+
+
+def _is_csd_encrypted(parsed: Tag,
+                      config: AmazonOrdersConfig) -> bool:
+    """
+    Whether Amazon served an Order history page with its Order cards encrypted for client-side decryption.
+    A card is encrypted when it holds (or sits inside) the decryption container and its Order number is not
+    readable. Readable cards can encrypt a single field the same way, so the container alone is not enough.
+
+    :param parsed: The parsed Order history page.
+    :param config: The config providing the selectors.
+    :return: ``True`` if any Order card on the page is encrypted.
+    """
+    container = config.selectors.ORDER_HISTORY_CSD_ENCRYPTED_SELECTOR
+    for card in util.select(parsed, config.selectors.ORDER_HISTORY_ENTITY_SELECTOR):
+        if not (util.select_one(card, container) or card.find_parent(class_="csd-encrypted-sensitive")):
+            continue
+
+        order_number_tag = util.select_one(card, config.selectors.FIELD_ORDER_NUMBER_SELECTOR)
+        if not (order_number_tag and order_number_tag.get_text(strip=True)):
+            return True
+
+    return False
+
+
+def _with_csd_disabled(url: str) -> str:
+    """
+    The same URL with Amazon's no-JavaScript fallback (``disableCsd=no-js``) requested, which renders the Order
+    cards as readable markup instead of an encrypted payload.
+
+    :param url: The Order history URL.
+    :return: The URL with ``disableCsd=no-js`` set.
+    """
+    parts = urlsplit(url)
+    query = [(k, v) for k, v in parse_qsl(parts.query, keep_blank_values=True) if k != "disableCsd"]
+    query.append(("disableCsd", "no-js"))
+
+    return urlunsplit(parts._replace(query=urlencode(query)))
 
 
 def _parse_order_details(parsed: Tag,
@@ -216,7 +254,7 @@ class AmazonOrders:
         """
         parsed = BeautifulSoup(html, config.bs4_parser)
 
-        if util.select_one(parsed, config.selectors.ORDER_HISTORY_CSD_ENCRYPTED_SELECTOR):
+        if _is_csd_encrypted(parsed, config):
             raise AmazonOrdersError("Could not parse Order history. Amazon served the page with its content "
                                     "encrypted, so fetch it through an authenticated session instead.")
 
@@ -278,7 +316,7 @@ class AmazonOrders:
         header_count = _parse_order_count(util.select_one(parsed, config.selectors.ORDER_HISTORY_COUNT_SELECTOR))
 
         # An encrypted page still renders card shells, so this must be checked before row parsing
-        if util.select_one(parsed, config.selectors.ORDER_HISTORY_CSD_ENCRYPTED_SELECTOR):
+        if _is_csd_encrypted(parsed, config):
             return OrderHistoryPageResult(orders=[],
                                           header_count=header_count,
                                           next_page_url=None,
@@ -452,6 +490,17 @@ class AmazonOrders:
         while next_page:
             page_response = self.amazon_session.get(next_page)
             self.amazon_session.check_response(page_response, meta={"index": current_index})
+
+            if _is_csd_encrypted(page_response.parsed, self.config):
+                # Amazon's no-JavaScript fallback renders the same page readable
+                logger.debug("Order history page was encrypted, requesting its no-JavaScript fallback")
+                page_response = self.amazon_session.get(_with_csd_disabled(next_page))
+                self.amazon_session.check_response(page_response, meta={"index": current_index})
+
+                if _is_csd_encrypted(page_response.parsed, self.config):
+                    raise AmazonOrdersError("Could not parse Order history. Amazon served the page, and its "
+                                            "no-JavaScript fallback, with the Order content encrypted.",
+                                            meta={"index": current_index})
 
             pages_walked += 1
 
