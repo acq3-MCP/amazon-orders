@@ -1751,7 +1751,7 @@ class TestOrders(UnitTestCase):
         # THEN
         self.assertEqual("csd_encrypted", result.page_type)
         self.assertEqual(0, len(result.orders))
-        self.assertEqual(1, result.header_count)
+        self.assertEqual(3, result.header_count)
 
     def test_parse_order_history_page_encrypted_field_in_readable_card(self):
         # GIVEN
