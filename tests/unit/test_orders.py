@@ -6,6 +6,7 @@ import unittest
 from datetime import date
 
 import responses
+from bs4 import BeautifulSoup
 
 from amazonorders.exception import AmazonOrdersError, AmazonOrdersNotFoundError, AmazonOrdersAuthRedirectError
 from amazonorders.orders import AmazonOrders
@@ -148,6 +149,47 @@ class TestOrders(UnitTestCase):
         self.assertEqual(3, orders[3].index)
         self.assert_orders_list_index(orders)
         self.assertEqual(1, resp.call_count)
+
+    @responses.activate
+    def test_get_order_history_csd_encrypted_falls_back_to_no_js(self):
+        # GIVEN
+        self.amazon_session.is_authenticated = True
+        url = f"{self.test_config.constants.ORDER_HISTORY_URL}?timeFilter=year-2018"
+        with open(os.path.join(self.RESOURCES_DIR, "orders", "order-history-csd-encrypted-siege.html"), "r",
+                  encoding="utf-8") as f:
+            encrypted_resp = responses.add(responses.GET, url, body=f.read(), status=200)
+        with open(os.path.join(self.RESOURCES_DIR, "orders", "order-history-2018-0.html"), "r",
+                  encoding="utf-8") as f:
+            no_js_resp = responses.add(responses.GET, f"{url}&disableCsd=no-js", body=f.read(), status=200)
+
+        # WHEN
+        orders = self.amazon_orders.get_order_history(year=2018, keep_paging=False)
+
+        # THEN
+        self.assertEqual(10, len(orders))
+        self.assert_order_112_0399923_3070642(orders[3], False)
+        self.assertEqual(1, encrypted_resp.call_count)
+        self.assertEqual(1, no_js_resp.call_count)
+
+    @responses.activate
+    def test_get_order_history_csd_encrypted_fallback_also_encrypted(self):
+        # GIVEN
+        self.amazon_session.is_authenticated = True
+        url = f"{self.test_config.constants.ORDER_HISTORY_URL}?timeFilter=year-2018"
+        with open(os.path.join(self.RESOURCES_DIR, "orders", "order-history-csd-encrypted-siege.html"), "r",
+                  encoding="utf-8") as f:
+            html = f.read()
+        responses.add(responses.GET, url, body=html, status=200)
+        no_js_resp = responses.add(responses.GET, f"{url}&disableCsd=no-js", body=html, status=200)
+
+        # WHEN
+        with self.assertRaises(AmazonOrdersError) as cm:
+            self.amazon_orders.get_order_history(year=2018, keep_paging=False)
+
+        # THEN
+        self.assertIn("no-JavaScript fallback", str(cm.exception))
+        self.assertEqual(0, cm.exception.meta["index"])
+        self.assertEqual(1, no_js_resp.call_count)
 
     @responses.activate
     def test_get_order_history_errors_with_meta(self):
@@ -886,6 +928,19 @@ class TestOrders(UnitTestCase):
     def test_parse_order_history_csd_encrypted(self):
         # GIVEN
         with open(os.path.join(self.RESOURCES_DIR, "orders", "order-history-csd-encrypted.html"), "r",
+                  encoding="utf-8") as f:
+            html = f.read()
+
+        # WHEN
+        with self.assertRaises(AmazonOrdersError) as cm:
+            AmazonOrders.parse_order_history(html, self.test_config)
+
+        # THEN
+        self.assertIn("encrypted", str(cm.exception))
+
+    def test_parse_order_history_csd_encrypted_siege(self):
+        # GIVEN
+        with open(os.path.join(self.RESOURCES_DIR, "orders", "order-history-csd-encrypted-siege.html"), "r",
                   encoding="utf-8") as f:
             html = f.read()
 
@@ -1683,6 +1738,37 @@ class TestOrders(UnitTestCase):
         # THEN - the rows parsed before the failure ride along in the exception meta
         self.assertEqual(3, len(cm.exception.meta["partial_orders"]))
         self.assertEqual([0, 1, 2], [order.index for order in cm.exception.meta["partial_orders"]])
+
+    def test_parse_order_history_page_csd_encrypted_siege(self):
+        # GIVEN
+        with open(os.path.join(self.RESOURCES_DIR, "orders", "order-history-csd-encrypted-siege.html"), "r",
+                  encoding="utf-8") as f:
+            html = f.read()
+
+        # WHEN
+        result = AmazonOrders.parse_order_history_page(html, self.test_config)
+
+        # THEN
+        self.assertEqual("csd_encrypted", result.page_type)
+        self.assertEqual(0, len(result.orders))
+        self.assertEqual(1, result.header_count)
+
+    def test_parse_order_history_page_encrypted_field_in_readable_card(self):
+        # GIVEN
+        with open(os.path.join(self.RESOURCES_DIR, "orders", "order-history-multiple-recipients.html"), "r",
+                  encoding="utf-8") as f:
+            parsed = BeautifulSoup(f.read(), self.test_config.bs4_parser)
+        recipient = parsed.select_one("div.order-card div.yohtmlc-recipient, div.order-card div.recipient")
+        container = parsed.new_tag("div", attrs={"class": "csd-encrypted-sensitive"})
+        container.string = ""
+        recipient.append(container)
+
+        # WHEN
+        result = AmazonOrders.parse_order_history_page(str(parsed), self.test_config)
+
+        # THEN
+        self.assertEqual("orders", result.page_type)
+        self.assertEqual(3, len(result.orders))
 
     def test_parse_order_history_page_csd_encrypted(self):
         # GIVEN - a browser-fetched digital history page whose order cards Amazon served as an

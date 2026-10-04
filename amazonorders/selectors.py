@@ -97,8 +97,9 @@ class Selectors:
     ORDER_HISTORY_COUNT_SELECTOR = [".js-yo-container span.num-orders",
                                     "form.js-time-filter-form label.time-filter__label b"]
     ORDER_HISTORY_TIME_FILTER_OPTIONS_SELECTOR = "form.js-time-filter-form select[name='timeFilter'] option"
-    ORDER_HISTORY_CSD_ENCRYPTED_SELECTOR = Selector("div.csd-encrypted-sensitive script",
-                                                    text_contains="csdContent(")
+    # The client-side-decryption container. Readable pages also use it for a single field (e.g. an address),
+    # so an Order card is only encrypted when it holds this and no readable Order number
+    ORDER_HISTORY_CSD_ENCRYPTED_SELECTOR = "div.csd-encrypted-sensitive"
     ORDER_DETAILS_ENTITY_SELECTOR = ["div#orderDetails",
                                      "div#ordersContainer",
                                      "div#odp-main-section"]
