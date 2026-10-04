@@ -210,6 +210,11 @@ class Constants:
     ##########################################################################
 
     COOKIES_SET_WHEN_AUTHENTICATED = ["x-main"]
+    #: The cookie in which Amazon's client-side decryption script keeps its key. Amazon encrypts Order history
+    #: cards with the key a request carries, so :class:`~amazonorders.session.AmazonSession` sends the script's own
+    #: ``disabled`` value in its place.
+    CSD_KEY_COOKIE = "csd-key"
+    CSD_KEY_COOKIE_DISABLED = "disabled"
     JS_ROBOT_TEXT_REGEX = r"[.\s\S]*verify that you're not a robot[.\s\S]*Enable JavaScript[.\s\S]*"
     GOKU_PROPS_REGEX = r"window\.gokuProps\s*=\s*(\{.*?\});"
     ACIC_CHALLENGE_PATH = "/ax/aaut/verify/ap/challenge"

@@ -1,6 +1,8 @@
 __copyright__ = "Copyright (c) 2024-2025 Alex Laird"
 __license__ = "MIT"
 
+import base64
+import json
 import os
 import sys
 import unittest
@@ -114,6 +116,65 @@ class TestSession(UnitTestCase):
         # THEN the debug write provisioned the output dir itself
         self.assertTrue(os.path.exists(self.test_output_dir))
         self.assertEqual(1, len(os.listdir(self.test_output_dir)))
+
+    @responses.activate
+    def test_request_sends_csd_key_disabled(self):
+        # GIVEN
+        url = f"{self.test_config.constants.BASE_URL}/some/page"
+        responses.add(responses.GET, url, body="<html></html>", status=200)
+
+        # WHEN
+        self.amazon_session.get(url)
+
+        # THEN
+        self.assertEqual(["csd-key=disabled"], self._csd_key_cookies_sent(responses.calls[0].request))
+
+    @responses.activate
+    def test_request_replaces_browser_csd_key(self):
+        # GIVEN
+        url = f"{self.test_config.constants.BASE_URL}/some/page"
+        responses.add(responses.GET, url, body="<html></html>", status=200)
+        self.amazon_session.session.cookies.set("csd-key", self._browser_csd_key(), domain="www.amazon.com",
+                                                path="/")
+        self.amazon_session.session.cookies.set("csd-key", self._browser_csd_key(), domain=".amazon.com", path="/")
+
+        # WHEN
+        self.amazon_session.get(url)
+        self.amazon_session.get(url)
+
+        # THEN
+        for call in responses.calls:
+            self.assertEqual(["csd-key=disabled"], self._csd_key_cookies_sent(call.request))
+        self.assertEqual(["disabled"],
+                         [cookie.value for cookie in self.amazon_session.session.cookies if cookie.name == "csd-key"])
+
+    @responses.activate
+    def test_request_replaces_csd_key_loaded_from_cookie_jar(self):
+        # GIVEN
+        with open(self.test_config.cookie_jar_path, "w", encoding="utf-8") as f:
+            f.write(json.dumps({"csd-key": self._browser_csd_key()}))
+        amazon_session = AmazonSession("some-username@gmail.com",
+                                       "some-password",
+                                       config=self.test_config)
+        url = f"{self.test_config.constants.BASE_URL}/some/page"
+        responses.add(responses.GET, url, body="<html></html>", status=200)
+
+        # WHEN
+        amazon_session.get(url, persist_cookies=True)
+
+        # THEN
+        self.assertEqual(["csd-key=disabled"], self._csd_key_cookies_sent(responses.calls[0].request))
+        with open(self.test_config.cookie_jar_path, "r", encoding="utf-8") as f:
+            self.assertEqual("disabled", json.loads(f.read())["csd-key"])
+
+    @staticmethod
+    def _browser_csd_key():
+        return base64.b64encode(json.dumps({"v": 1, "kid": "test-kid", "key": "test-key"}).encode()).decode()
+
+    @staticmethod
+    def _csd_key_cookies_sent(request):
+        return [cookie.strip() for cookie in request.headers.get("Cookie", "").split(";")
+                if cookie.strip().startswith("csd-key=")]
 
     @responses.activate
     def test_login_claim_invalid_username(self):

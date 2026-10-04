@@ -201,6 +201,8 @@ class AmazonSession:
         if self.config.request_timeout is not None:
             kwargs.setdefault("timeout", self.config.request_timeout)
 
+        self._disable_csd_key()
+
         response = self.session.request(method, url, **kwargs)
         amazon_session_response = AmazonSessionResponse(response,
                                                         self.config.bs4_parser)
@@ -402,6 +404,27 @@ class AmazonSession:
                                                 pool_maxsize=self.config.connection_pool_size)
         session.mount('https://', adapter)
         return session
+
+    def _disable_csd_key(self) -> None:
+        """
+        Replace any client-side decryption key in the cookie jar with Amazon's own ``disabled`` value. Amazon
+        encrypts Order history cards with the key a request carries, so a key created by a browser (for example in
+        cookies imported from one) gets pages whose Orders cannot be parsed. With ``disabled``, Amazon serves them
+        readable and omits the decryption script. Checked before every request, since cookies can be added to the
+        jar at any time.
+        """
+        name = self.config.constants.CSD_KEY_COOKIE
+        disabled = self.config.constants.CSD_KEY_COOKIE_DISABLED
+        host = urlparse(self.config.constants.BASE_URL).hostname
+        cookies = [cookie for cookie in self.session.cookies if cookie.name == name]
+        if len(cookies) == 1 and cookies[0].value == disabled and cookies[0].domain == host:
+            return
+
+        if any(cookie.value != disabled for cookie in cookies):
+            logger.debug(f"Replacing the {name} cookie with \"{disabled}\", so Amazon serves readable pages")
+        for cookie in cookies:
+            self.session.cookies.clear(cookie.domain, cookie.path, cookie.name)
+        self.session.cookies.set(name, disabled, domain=host, path="/")
 
     def _process_forms(self, last_response):
         for form in self.auth_forms:
