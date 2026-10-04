@@ -256,7 +256,8 @@ class AmazonOrders:
 
         if _is_csd_encrypted(parsed, config):
             raise AmazonOrdersError("Could not parse Order history. Amazon served the page with its content "
-                                    "encrypted, so fetch it through an authenticated session instead.")
+                                    "encrypted, which it does when the request carries a browser's csd-key cookie, "
+                                    "so fetch it with get_order_history() or add disableCsd=no-js to its URL.")
 
         order_tags = _parse_order_history(parsed, config, start_index)
 
@@ -492,7 +493,8 @@ class AmazonOrders:
             self.amazon_session.check_response(page_response, meta={"index": current_index})
 
             if _is_csd_encrypted(page_response.parsed, self.config):
-                # Amazon's no-JavaScript fallback renders the same page readable
+                # The session sends csd-key=disabled, so Amazon should not encrypt; if it does anyway, its
+                # no-JavaScript fallback renders the same page readable
                 logger.debug("Order history page was encrypted, requesting its no-JavaScript fallback")
                 page_response = self.amazon_session.get(_with_csd_disabled(next_page))
                 self.amazon_session.check_response(page_response, meta={"index": current_index})
