@@ -19,18 +19,20 @@ from amazonorders.session import AmazonSession
 logger = logging.getLogger(__name__)
 
 
-def _parse_order_count(order_count_tag: Optional[Tag]) -> Optional[int]:
+def _parse_order_count(order_count_tag: Optional[Tag],
+                       config: AmazonOrdersConfig) -> Optional[int]:
     """
     Parse the leading number out of an Order history count tag, so the count survives thousands
     separators (e.g. ``1,213``, ``1.213``, or ``1 213 orders``) and any trailing copy.
 
     :param order_count_tag: The Order history count tag, if one was found.
+    :param config: The config providing the count format.
     :return: The Order count, or ``None`` if it was absent or unparsable.
     """
     if not order_count_tag:
         return None
 
-    return util.to_count(order_count_tag.text)
+    return config.constants.parse_count(order_count_tag.text)
 
 
 def _parse_order_history(parsed: Tag,
@@ -49,7 +51,7 @@ def _parse_order_history(parsed: Tag,
 
     if not order_tags:
         order_count = _parse_order_count(
-            util.select_one(parsed, config.selectors.ORDER_HISTORY_COUNT_SELECTOR))
+            util.select_one(parsed, config.selectors.ORDER_HISTORY_COUNT_SELECTOR), config)
 
         if order_count is None or order_count > start_index:
             raise AmazonOrdersError("Could not parse Order history. Check if Amazon changed the HTML.")
@@ -61,7 +63,7 @@ def _is_csd_encrypted(parsed: Tag,
                       config: AmazonOrdersConfig) -> bool:
     """
     Whether Amazon served an Order history page with its Order cards encrypted for client-side decryption.
-    A card is encrypted when it holds (or sits inside) the decryption container and its Order number is not
+    A card is encrypted when it holds the decryption container and its Order number is not
     readable. Readable cards can encrypt a single field the same way, so the container alone is not enough.
 
     :param parsed: The parsed Order history page.
@@ -70,7 +72,7 @@ def _is_csd_encrypted(parsed: Tag,
     """
     container = config.selectors.ORDER_HISTORY_CSD_ENCRYPTED_SELECTOR
     for card in util.select(parsed, config.selectors.ORDER_HISTORY_ENTITY_SELECTOR):
-        if not (util.select_one(card, container) or card.find_parent(class_="csd-encrypted-sensitive")):
+        if not util.select_one(card, container):
             continue
 
         order_number_tag = util.select_one(card, config.selectors.FIELD_ORDER_NUMBER_SELECTOR)
@@ -314,7 +316,8 @@ class AmazonOrders:
         """
         parsed = BeautifulSoup(html, config.bs4_parser)
 
-        header_count = _parse_order_count(util.select_one(parsed, config.selectors.ORDER_HISTORY_COUNT_SELECTOR))
+        header_count = _parse_order_count(util.select_one(parsed, config.selectors.ORDER_HISTORY_COUNT_SELECTOR),
+                                          config)
 
         # An encrypted page still renders card shells, so this must be checked before row parsing
         if _is_csd_encrypted(parsed, config):
@@ -508,7 +511,8 @@ class AmazonOrders:
 
             if pages_walked == 1:
                 header_count = _parse_order_count(
-                    util.select_one(page_response.parsed, self.config.selectors.ORDER_HISTORY_COUNT_SELECTOR))
+                    util.select_one(page_response.parsed, self.config.selectors.ORDER_HISTORY_COUNT_SELECTOR),
+                    self.config)
 
             order_tags = _parse_order_history(page_response.parsed, self.config, current_index)
 

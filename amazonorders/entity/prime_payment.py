@@ -2,7 +2,6 @@ __copyright__ = "Copyright (c) 2024-2025 Alex Laird"
 __license__ = "MIT"
 
 import logging
-import re
 from datetime import date
 from typing import Optional, TypeVar, Union
 
@@ -15,9 +14,6 @@ from amazonorders.exception import AmazonOrdersError
 from amazonorders.selectors import Selector
 
 logger = logging.getLogger(__name__)
-
-#: Matches a physical (``111-1234567-1234567``) or digital (``D01-1234567-1234567``) Order number.
-_ORDER_NUMBER_REGEX = re.compile(r"((?:\d{3}|[A-Z]\d{2})-\d{7}-\d{7})")
 
 T = TypeVar("T")
 
@@ -102,9 +98,9 @@ class PrimePayment(Parsable):
     def _parse_order_number(self) -> Optional[str]:
         value = self._parse_labeled_value(self.config.selectors.FIELD_PRIME_PAYMENT_ORDER_NUMBER_LABEL_SELECTOR)
 
-        match = _ORDER_NUMBER_REGEX.search(value) if value else None
+        order_number = self.config.constants.parse_order_number(value) if value else None
 
-        return self._require(match.group(1) if match else None, "order_number")
+        return self._require(order_number, "order_number")
 
     def _parse_order_details_link(self) -> Optional[str]:
         if not self.order_number:

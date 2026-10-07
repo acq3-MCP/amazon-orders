@@ -1,7 +1,7 @@
 __copyright__ = "Copyright (c) 2024-2025 Alex Laird"
 __license__ = "MIT"
 
-from typing import Optional
+from typing import Any, Callable, Dict, Optional, Tuple
 
 
 class Selector:
@@ -23,15 +23,58 @@ class Selector:
         self.text_contains: Optional[str] = text_contains
 
 
+class SelectorsFromText:
+    """
+    Builds a selector, or a list of selectors, from page text attributes of the :class:`Selectors` class it's set on,
+    so a subclass that changes the text gets selectors that match it. Selectors built from the same text are shared.
+
+    .. code-block:: python
+
+        ORDER_SKIP_TOTALS = SelectorsFromText(lambda cancelled_text: [
+            Selector("h4.a-alert-heading", text_contains=cancelled_text)
+        ], "ORDER_CANCELLED_TEXT")
+    """
+
+    def __init__(self,
+                 build: Callable[..., Any],
+                 *attribute_names: str) -> None:
+        #: Builds the selector(s), given the values of :attr:`attribute_names`.
+        self.build: Callable[..., Any] = build
+        #: The names of the :class:`Selectors` attributes the selector(s) are built from.
+        self.attribute_names: Tuple[str, ...] = attribute_names
+        self._built: Dict[Tuple[Any, ...], Any] = {}
+
+    def __get__(self,
+                instance: Optional["Selectors"],
+                owner: type) -> Any:
+        values = tuple(getattr(owner, name) for name in self.attribute_names)
+        if values not in self._built:
+            self._built[values] = self.build(*values)
+
+        return self._built[values]
+
+
 class Selectors:
     """
-    A class containing CSS selectors. Extend and override with ``selectors_class`` in the config:
+    A class containing CSS selectors, and the page text they match or extract a value from. Extend and
+    override with ``selectors_class`` in the config:
 
     .. code-block:: python
 
         from amazonorders.conf import AmazonOrdersConfig
 
         config = AmazonOrdersConfig(data={"selectors_class": "my_module.MySelectors"})
+
+    Page text sits beside the selector it works with, named for its role: ``_PREFIX`` and ``_SUFFIX``
+    text is split off the selected value, ``_TEXT`` is matched in it (contained in it, or for an Order status
+    shown on its own, equal to it), and ``_REGEX`` extracts from it (a ``{count}`` placeholder marks a whole
+    number, parsed by :func:`~amazonorders.constants.Constants.parse_count`). ``_LABELS`` are lists matched against the
+    lowercase text of the Order subtotal rows: each label is tried in order, and the first that yields an
+    amount wins. A label is a substring of the row, or a compiled regex searched in it, for a label that's
+    also part of a longer one (e.g. ``re.compile(r"\\btotal")`` matches "total" but not "subtotal").
+
+    Some selectors are built from page text, such as :attr:`ORDER_SKIP_TOTALS` from :attr:`ORDER_CANCELLED_TEXT`.
+    A subclass that changes the text gets them rebuilt from it, unless it sets the selector itself.
     """
 
     ##########################################################################
@@ -113,33 +156,39 @@ class Selectors:
     SHIPMENT_ENTITY_SELECTOR = ["[data-component='orderCard'] [data-component='shipments'] .a-box",
                                 "div.shipment",
                                 "div.delivery-box"]
+    ORDER_PHYSICAL_STORE_TEXT = "Purchased at Amazon"
+    ORDER_WHOLE_FOODS_TEXT = "Whole Foods Market"
+    ORDER_CANCELLED_TEXT = "Cancelled"
     # Selectors defined here mean we don't have a reliable way to parse all details in an Order, so Items and
     # Shipments will be skipped
-    ORDER_SKIP_ITEMS = [
+    ORDER_SKIP_ITEMS = SelectorsFromText(lambda physical_store_text: [
         # Identifies an Amazon Fresh order (also matched by WFM in-store; distinguished via ORDER_WHOLE_FOODS)
         ".brand-info-box .brand-logo img",
         # Identifies a Whole Foods Market receipt order
         "a.yohtmlc-order-details-link[href^='/wholefoodsmarket']",
         # Identifies an order from a physical Amazon store
-        Selector("div.yohtmlc-shipment-status-primaryText", "Purchased at Amazon")
-    ]
+        Selector("div.yohtmlc-shipment-status-primaryText", physical_store_text)
+    ], "ORDER_PHYSICAL_STORE_TEXT")
     # Selectors identifying a Whole Foods Market purchase. Unlike ORDER_SKIP_ITEMS entries, WFM orders
     # expose a grand_total (and often item_count) on the history page, so those fields are populated.
-    ORDER_WHOLE_FOODS = [
+    ORDER_WHOLE_FOODS = SelectorsFromText(lambda whole_foods_text: [
         "a[href*='/wholefoodsmarket/receipts/order/']",
         "a[href*='/fopo/order-details']",
-        Selector("div.yohtmlc-shipment-status-primaryText", text_contains="Whole Foods Market"),
+        Selector("div.yohtmlc-shipment-status-primaryText", text_contains=whole_foods_text),
         "img.ufpo-itemListWidget-image"
-    ]
+    ], "ORDER_WHOLE_FOODS_TEXT")
     # Selectors defined here mean the Order will not have parsable totals
-    ORDER_SKIP_TOTALS = [
+    ORDER_SKIP_TOTALS = SelectorsFromText(lambda cancelled_text: [
         # Identifies a cancelled order on the history page
-        Selector("div.yohtmlc-shipment-status-primaryText", "Cancelled"),
+        Selector("div.yohtmlc-shipment-status-primaryText", cancelled_text),
         # Identifies a cancelled order on the details page
-        Selector("h4.a-alert-heading", text_contains="cancelled")
-    ]
+        Selector("h4.a-alert-heading", text_contains=cancelled_text)
+    ], "ORDER_CANCELLED_TEXT")
     ORDER_SHIPMENT_STATUS_SELECTOR = "h4.od-status-message"
-    ORDER_SHIPMENT_CANCELLED_SELECTOR = Selector(ORDER_SHIPMENT_STATUS_SELECTOR, text_contains="Cancelled")
+    ORDER_SHIPMENT_CANCELLED_SELECTOR = SelectorsFromText(
+        lambda shipment_status_selector, cancelled_text: Selector(shipment_status_selector,
+                                                                  text_contains=cancelled_text),
+        "ORDER_SHIPMENT_STATUS_SELECTOR", "ORDER_CANCELLED_TEXT")
 
     #####################################
     # CSS selectors for Item fields
@@ -153,6 +202,7 @@ class Selectors:
                                     "span.product-image__qty"]
     # WFM items render "Qty: N" or "Qty: 0.31 lb"; extracted in Item._parse_quantity
     FIELD_ITEM_WHOLE_FOODS_QUANTITY_SELECTOR = ["span.a-size-small"]
+    FIELD_ITEM_WHOLE_FOODS_QUANTITY_REGEX = r"^Qty:\s*{count}$"
     FIELD_ITEM_TITLE_SELECTOR = ["[data-component='itemTitle']",
                                  ".yohtmlc-item a", ".yohtmlc-product-title",
                                  "div.a-column.a-span10 > a",
@@ -166,12 +216,15 @@ class Selectors:
                                 "div.a-column.a-span10 > a",
                                 ".yo-enhanced-title a"]
     FIELD_ITEM_TAG_ITERATOR_SELECTOR = [".yohtmlc-item div"]
+    FIELD_ITEM_CONDITION_PREFIX = "Condition:"
     FIELD_ITEM_PRICE_SELECTOR = ["[data-component='unitPrice'] .a-text-price :not(.a-offscreen)",
                                  ".yohtmlc-item .a-color-price",
                                  "div.a-section.a-text-right span.a-size-small"]
     FIELD_ITEM_SELLER_SELECTOR = ["[data-component='orderedMerchant']"] + FIELD_ITEM_TAG_ITERATOR_SELECTOR
+    FIELD_ITEM_SELLER_TEXT = "Sold by:"
     FIELD_ITEM_RETURN_SELECTOR = (["[data-component='itemReturnEligibility']", ".yo-enhanced-return"]
                                   + FIELD_ITEM_TAG_ITERATOR_SELECTOR)
+    FIELD_ITEM_RETURN_TEXT = "Return"
 
     #####################################
     # CSS selectors for Order fields
@@ -192,6 +245,7 @@ class Selectors:
                                         "div.order-header div.a-column.a-span2",
                                         "div.order-header div.a-col-left .a-span9",
                                         "#wfm-grand-total-amount"]
+    FIELD_ORDER_GRAND_TOTAL_PREFIX = "total"
     # WFM in-store (FOPO) details page amounts
     FIELD_ORDER_WHOLE_FOODS_SUBTOTAL_SELECTOR = "#wfm-subtotal-amount"
     FIELD_ORDER_WHOLE_FOODS_TAX_SELECTOR = "#wfm-tax-total-amount"
@@ -201,21 +255,39 @@ class Selectors:
                                         "span.order-date-invoice-item",
                                         "[data-component='briefOrderInfo'] div.a-column",
                                         "div:is(.a-span3, .a-span12)"]
+    FIELD_ORDER_PLACED_DATE_SUFFIX = "Order #"
     FIELD_ORDER_PAYMENT_METHOD_SELECTOR = ["[data-testid='payment-instrument-name']",
                                            "img.pmts-payment-credit-card-instrument-logo"]
     FIELD_ORDER_PAYMENT_METHOD_LAST_4_SELECTOR = ["[data-testid='payment-instrument-number']",
                                                   "span:has(img.pmts-payment-credit-card-instrument-logo):last-child"]
+    FIELD_ORDER_PAYMENT_METHOD_LAST_4_REGEX = r"(?:ending in\s+|^\s*)(\d+)"
     FIELD_ORDER_SUBTOTALS_TAG_ITERATOR_SELECTOR = ["[data-component='orderSubtotals'] div.a-row",
                                                    "div#od-subtotals div.a-row",
                                                    "[data-component='chargeSummary'] div.od-line-item-row"]
     FIELD_ORDER_SUBTOTALS_TAG_POPOVER_PRELOAD_SELECTOR = ".a-popover-preload"
     FIELD_ORDER_SUBTOTALS_INNER_TAG_SELECTOR = "div.a-span-last"
+    FIELD_ORDER_GRAND_TOTAL_LABELS = ["grand total", "total for this order"]
+    FIELD_ORDER_SUBTOTAL_LABELS = ["subtotal"]
+    FIELD_ORDER_SHIPPING_TOTAL_LABELS = ["shipping"]
+    FIELD_ORDER_FREE_SHIPPING_LABELS = ["free shipping"]
+    FIELD_ORDER_PROMOTION_APPLIED_LABELS = ["promotion"]
+    FIELD_ORDER_COUPON_SAVINGS_LABELS = ["coupon"]
+    FIELD_ORDER_REWARD_POINTS_LABELS = ["reward"]
+    FIELD_ORDER_SUBSCRIPTION_DISCOUNT_LABELS = ["subscribe", "subscription"]
+    FIELD_ORDER_TOTAL_BEFORE_TAX_LABELS = ["before tax"]
+    FIELD_ORDER_ESTIMATED_TAX_LABELS = ["estimated tax", "tax collected"]
+    FIELD_ORDER_REFUND_TOTAL_LABELS = ["refund total"]
+    FIELD_ORDER_MULTIBUY_DISCOUNT_LABELS = ["multibuy discount"]
+    FIELD_ORDER_AMAZON_DISCOUNT_LABELS = ["amazon discount"]
+    FIELD_ORDER_GIFT_CARD_LABELS = ["gift card amount", "gift card"]
+    FIELD_ORDER_GIFT_WRAP_LABELS = ["gift wrap"]
     FIELD_ORDER_ADDRESS_SELECTOR = ["div.displayAddressDiv", "[data-component='shippingAddress']"]
     FIELD_ORDER_ADDRESS_FALLBACK_1_SELECTOR = "div.recipient span.a-declarative"
     FIELD_ORDER_ADDRESS_FALLBACK_2_SELECTOR = "script[id^='shipToData']"
     FIELD_ORDER_GIFT_CARD_INSTANCE_SELECTOR = ".gift-card-instance"
     FIELD_ORDER_ITEM_COUNT_SELECTOR = ["div.a-fixed-left-grid-col.a-col-right span",
                                        "span"]
+    FIELD_ORDER_ITEM_COUNT_REGEX = r"{count}\s+items?\s+in this purchase"
 
     #####################################
     # CSS selectors for Shipment fields
@@ -247,6 +319,7 @@ class Selectors:
     #####################################
 
     FIELD_SELLER_NAME_SELECTOR = ["a", "span"]
+    FIELD_SELLER_NAME_PREFIX = "Sold by:"
     FIELD_SELLER_LINK_SELECTOR = "a"
 
     #####################################
@@ -255,6 +328,7 @@ class Selectors:
 
     TRANSACTION_HISTORY_FORM_SELECTOR = "form:has(input[name='ppw-widgetState'])"
     TRANSACTION_HISTORY_CONTAINER_SELECTOR = ".pmts-portal-component"
+    TRANSACTION_HISTORY_EMPTY_TEXT = "don't have any transactions"
     TRANSACTION_DATE_CONTAINERS_SELECTOR = "div.apx-transaction-date-container"
     TRANSACTIONS_CONTAINER_SELECTOR = "div"
     TRANSACTIONS_SELECTOR = "div.apx-transactions-line-item-component-container:has(*)"
@@ -376,6 +450,8 @@ class Selectors:
     FIELD_WISH_LIST_ENTRY_TITLE_SELECTOR = "span[id^='wl-list-entry-title-']"
     # "Default List" or "Collaborator" under the title (one id for both, so the text decides)
     FIELD_WISH_LIST_ENTRY_LABEL_SELECTOR = "span#list-default-collaborator-label"
+    FIELD_WISH_LIST_ENTRY_DEFAULT_TEXT = "Default"
+    FIELD_WISH_LIST_ENTRY_COLLABORATOR_TEXT = "Collaborator"
     FIELD_WISH_LIST_ENTRY_PRIVACY_SELECTOR = "div[id^='wl-list-entry-privacy-']"
     FIELD_WISH_LIST_ENTRY_COLLABORATIVE_ICON_SELECTOR = "img#wl-collaborated-list-icon"
 
@@ -388,10 +464,12 @@ class Selectors:
     WISH_LIST_COLLABORATOR_ROW_SELECTOR = "div[id^='manage-collaborators-row-']"
     FIELD_WISH_LIST_COLLABORATOR_NAME_SELECTOR = "span[id^='manage-collaborator-profile_']"
     FIELD_WISH_LIST_COLLABORATOR_ROLE_SELECTOR = "div.a-span-last span"
+    FIELD_WISH_LIST_COLLABORATOR_OWNER_TEXT = "Owner"
 
     FIELD_WISH_LIST_ITEM_EXTERNAL_ID_SELECTOR = "input[name='itemExternalId']"
     FIELD_WISH_LIST_ITEM_NAME_SELECTOR = "a[id^='itemName_']"
     FIELD_WISH_LIST_ITEM_BYLINE_SELECTOR = "span[id^='item-byline-']"
+    FIELD_WISH_LIST_ITEM_BYLINE_PREFIX = "by"
     FIELD_WISH_LIST_ITEM_IMAGE_SELECTOR = "div[id^='itemImage_'] img"
     FIELD_WISH_LIST_ITEM_PRICE_SELECTOR = "span[id^='itemPrice_'] span.a-offscreen"
     FIELD_WISH_LIST_ITEM_MIN_PRICE_SELECTOR = "span[id^='itemMinPrice_'] span.a-offscreen"
@@ -408,6 +486,7 @@ class Selectors:
     # reached its quantity wanted, and not on one bought once whose wanted quantity was then raised
     FIELD_WISH_LIST_ITEM_PURCHASED_MARKER_SELECTOR = "div[id^='itemGiftedFromElsewhereSuccessAlert_']"
     FIELD_WISH_LIST_ITEM_RATING_SELECTOR = "i[id^='review_stars_'] span.a-icon-alt"
+    FIELD_WISH_LIST_ITEM_RATING_REGEX = r"([\d.]+)\s+out of"
     FIELD_WISH_LIST_ITEM_REVIEW_COUNT_SELECTOR = "a[id^='review_count_']"
     FIELD_WISH_LIST_ITEM_PRIME_BADGE_SELECTOR = "i.a-icon-prime"
     FIELD_WISH_LIST_ITEM_ACTION_SELECTOR = "div[id^='itemAction_'] .a-button-text"
