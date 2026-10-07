@@ -295,12 +295,11 @@ class TestDigitalOrders(UnitTestCase):
         from bs4 import BeautifulSoup
 
         from amazonorders import util
-        from amazonorders.gift_cards import _parse_gift_card_activity_page
+        from amazonorders.gift_cards import AmazonGiftCards
 
         with open(os.path.join(self.RESOURCES_DIR, "giftcards", "gift-card-balance-activity.html"), "r",
                   encoding="utf-8") as f:
-            gc_parsed = BeautifulSoup(f.read(), self.test_config.bs4_parser)
-        _, activity, _ = _parse_gift_card_activity_page(gc_parsed, self.test_config)
+            activity = AmazonGiftCards.parse_gift_card_activity(f.read(), self.test_config)
         debit = next(entry for entry in activity
                      if entry.activity_date == datetime.date(2026, 4, 9) and not entry.is_credit)
 

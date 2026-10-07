@@ -951,6 +951,20 @@ class TestOrders(UnitTestCase):
         # THEN
         self.assertIn("encrypted", str(cm.exception))
 
+    def test_parse_order_history_encrypted_field_in_readable_card(self):
+        # GIVEN
+        with open(os.path.join(self.RESOURCES_DIR, "orders", "order-history-multiple-recipients.html"), "r",
+                  encoding="utf-8") as f:
+            html = f.read().replace('<span class="a-color-secondary a-text-caps">Ship to</span>',
+                                    '<span class="a-color-secondary a-text-caps">Ship to</span>'
+                                    '<div class="csd-encrypted-sensitive"></div>', 1)
+
+        # WHEN
+        orders = AmazonOrders.parse_order_history(html, self.test_config)
+
+        # THEN
+        self.assertEqual(3, len(orders))
+
     def test_parse_order_history_no_js_fallback_is_not_encrypted(self):
         # GIVEN
         with open(os.path.join(self.RESOURCES_DIR, "orders", "order-details-fopo-113-4055495-4107437.html"), "r",

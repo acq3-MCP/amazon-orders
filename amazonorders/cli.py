@@ -422,7 +422,7 @@ def gift_card_balance(ctx: Context) -> None:
 
         balance = amazon_gift_cards.get_balance()
 
-        click.echo(f"Gift Card Balance: {config.constants.format_currency(balance)}\n")
+        click.echo(f"Gift Card Balance: {config.constants.format_currency(balance)}")
     except AmazonOrdersAuthRedirectError:
         _prompt_to_reauth_flow()
     except AmazonOrdersError as e:
@@ -436,7 +436,7 @@ def gift_card_balance(ctx: Context) -> None:
               help="The number of days of Gift Card activity to get.")
 @click.option("-o", "--output", type=click.Choice(OutputFormatter.OUTPUT_FORMATS), default="text",
               help="The output format. Defaults to text.")
-def gift_card_activity(ctx: Context, **kwargs: Any):
+def gift_card_activity(ctx: Context, **kwargs: Any) -> None:
     """
     Get Amazon Gift Card activity for a given number of days.
     """
@@ -446,12 +446,12 @@ def gift_card_activity(ctx: Context, **kwargs: Any):
         _authenticate(amazon_session)
 
         days = kwargs["days"]
+        output = kwargs["output"]
 
         click.echo(
             """-----------------------------------------------------------------------
 Gift Card Activity for {days} days
------------------------------------------------------------------------\n""".format(days=days),
-            err=True
+-----------------------------------------------------------------------\n""".format(days=days), err=True
         )
         click.echo("Info: Fetching Gift Card activity, this might take a minute ...", err=True)
 
@@ -463,13 +463,11 @@ Gift Card Activity for {days} days
         activity = amazon_gift_cards.get_gift_card_activity(days=days)
         end_time = time.time()
 
-        click.echo(config.output_cls(config).format(activity, kwargs["output"]))
+        click.echo(config.output_cls(config).format(activity, output))
 
         click.echo(
             "... {total} Gift Card activity entries parsed in {time} seconds.\n".format(
-                total=len(activity),
-                time=int(end_time - start_time)),
-            err=True)
+                total=len(activity), time=int(end_time - start_time)), err=True)
     except AmazonOrdersAuthRedirectError:
         _prompt_to_reauth_flow()
     except AmazonOrdersError as e:

@@ -4,17 +4,12 @@ All notable changes to this project will be documented in this file.
 
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased](https://github.com/alexdlaird/amazon-orders/compare/4.7.0...HEAD)
+## [Unreleased](https://github.com/alexdlaird/amazon-orders/compare/4.7.1...HEAD)
 
 ### Added
 
 - `AmazonOrders.parse_order_history_page()`, returning an `OrderHistoryPageResult` with the page's Orders, `header_count`, `next_page_url`, and a `page_type` distinguishing a confirmed-empty window from a sign-in/challenge page. Row-level failures carry `partial_orders` in the exception `meta`. The fetching walk shares the same per-page helpers.
 - `parse_order_history_page()` now classifies CSD-encrypted pages as `page_type="csd_encrypted"` instead of raising mid-row: some fetches (observed on browser-fetched digital history) render the order cards as encrypted client-side-decryption shells, detected via their `disableCsd` noscript fallback. `header_count` still populates when the time-filter label renders.
-- `AmazonGiftCards` with `get_balance()` and `get_gift_card_activity()` for read-only access to the Gift Card balance page (`/gc/balance`), and the `GiftCardActivity` entity (date, description, signed amount, closing balance, and Order references). Parsing is validated against sanitized captures of the live page.
-- `gift-card-balance` and `gift-card-activity` CLI commands.
-- `AmazonGiftCards.last_activity_pull` (a `GiftCardActivityPullResult` with `pages_walked`, `rows_parsed`, and `stop_reason`) for per-pull observability.
-- Mid-pagination failures in `get_gift_card_activity()` now carry `partial_activity` (the entries fetched before the failure) in the exception `meta` alongside `next_page_url`, making resume composable.
-- Documented (and covered with a test) that `GiftCardActivity.order_number` can be `None` on applied-to-order debit rows rendered without an Order anchor.
 - `AmazonDigitalOrders` (`amazonorders/digital_orders.py`) with `get_digital_orders()` (one time window) and `get_all_digital_orders()` (full-history walk enumerating the page's own year dropdown) for the Digital Orders tab (`orderFilter=digital`, orders with `D01-` IDs, absent from the default history). Rows parse with the standard `Order` entity. Per-pull observability via `last_digital_pull`; mid-walk failures carry `partial_orders` and the failed `window` in the exception `meta`.
 - `AmazonOrders.last_history_pull` (an `OrderHistoryPullResult` with `pages_walked`, `rows_parsed`, `header_count`, and `stop_reason`) for order history pull observability.
 - `digital-orders` CLI command.
@@ -29,11 +24,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - `AmazonLists.parse_wish_list_page()`, the parse-from-string twin, returning a `WishListPageResult` whose `page_type` distinguishes `wish_list` (a list page), `items` (a "See More" batch), and `not_wish_list` (a sign-in or challenge page). Item-level failures carry `partial_items` in the exception `meta`; mid-pagination failures in `get_list()` carry `partial_items` and `next_page_url`.
 - `AmazonLists.last_list_pull` (a `WishListPullResult` with `pages_walked`, `items_parsed`, and `stop_reason`) for per-pull observability.
 - `wish-lists` and `wish-list` CLI commands, with `--output`, and `OutputFormatter.wish_list_text()` and `OutputFormatter.wish_list_item_text()`.
-- `--output` on the `digital-orders`, `gift-card-activity`, and `rewards-balance` CLI commands, rendering their entities as `text`, `json`, `yaml`, or `csv` like the upstream commands; their progress messages now go to `stderr`.
-- `OutputFormatter.gift_card_activity_text()` and `OutputFormatter.rewards_balance_text()`, the text renderers those commands previously kept in the CLI.
+- `--output` on the `digital-orders` and `rewards-balance` CLI commands, rendering their entities as `text`, `json`, `yaml`, or `csv` like the upstream commands; their progress messages now go to `stderr`.
+- `OutputFormatter.rewards_balance_text()`, the text renderer the `rewards-balance` command previously kept in the CLI.
 
 ### Changed
 
+- Synced with upstream 4.7.1. Gift Cards are upstream's (alexdlaird/amazon-orders#141): `AmazonGiftCards`, `GiftCardActivity`, the CLI commands, and the fixtures match upstream, and `parse_gift_card_activity()` parses an already-fetched page. The encrypted-card check is upstream's `AmazonOrders._is_csd_encrypted()` (alexdlaird/amazon-orders#143), and `parse_order_history()` raises upstream's message for such a page; the fork keeps the `disableCsd=no-js` re-request, the `csd_encrypted` page type, and `csd-key=disabled` on top of it. The Order history helpers are methods on `AmazonOrders`, as upstream moved its own, and `parse_order_history_page()` is a classmethod.
 - Synced with upstream 4.7.0. Page text and formats now come from `Selectors` and `Constants` so a language package can override them, and the page-text guard covers the fork's parsers: the wish-list labels (`Default`, `Collaborator`, `Owner`), the byline prefix, and the rating pattern are `Selectors` attributes, and Gift Card and Prime payment Order numbers are found with `Constants.parse_order_number()`. `ORDER_NUMBER_REGEX` gains the older `NNNN-NNNNNN-NNNNNNN` shape the Gift Card ledger still links, as upstream's merged Gift Card change does.
 - The encrypted-card check no longer treats a card inside a decryption container as encrypted; only a card holding one with an unreadable Order number counts, as upstream's merged check does.
 - `RewardsBalance` now extends `Parsable` (its `parsed` is the page's `__NEXT_DATA__` script tag), so it has `to_dict()` and renders in every `OutputFormatter` format. Its constructor now takes the tag before the card entry.
@@ -42,6 +38,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Removed
 
+- The fork's Gift Card additions, in favour of upstream's: `AmazonGiftCards.last_activity_pull` and `GiftCardActivityPullResult`; `partial_activity` in the `meta` of a mid-walk failure (upstream's carries `next_page_url`); tolerating an unparseable `GiftCardActivity.activity_date` (upstream requires it unless `warn_on_missing_required_field` is set); and building `GiftCardActivity.order_details_link` from the Order number when the row's link has no `href`. A caller that needs them can subclass `AmazonGiftCards` and override its walk around `_parse_gift_card_activity_page()`.
 - `Item.video_gti`. Upstream keeps `Item` to the fields every Item shares (alexdlaird/amazon-orders#129), so it now lives downstream as an `Item` subclass registered through the `item_class` config key, the extension point upstream suggested; `Item` is identical to upstream again.
 
 ### Fixed
@@ -49,14 +46,21 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Order history pages whose cards Amazon encrypts with the `SiegeClientSideDecryption` script (no `csdContent(` call) are detected again: an Order card is encrypted when it holds the client-side-decryption container and no readable Order number, whatever the script. `parse_order_history_page()` classifies them as `csd_encrypted`, `parse_order_history()` raises the encrypted-page error instead of an entity error, and `get_order_history()` (and so the Digital Orders walk) re-requests such a page once with `disableCsd=no-js`, Amazon's readable no-JavaScript fallback, before raising. The fixture `order-history-csd-encrypted-siege.html` is a scrubbed capture of the live page.
 - `AmazonSession` now sends `csd-key=disabled` on every request, replacing any client-side decryption key in its cookie jar. Amazon encrypts Order history cards with the key a request carries, so a session holding a key created by a browser (in cookies imported from one, or harvested by the Playwright auth forms) received pages whose Orders could not be parsed; with `disabled`, Amazon serves them readable in one request and omits the decryption script. The `disableCsd=no-js` re-request stays as a backstop. The encrypted-page error from `parse_order_history()` now names the cause.
 - Page-supplied next-page URLs are no longer followed off-origin. The Order history pager link and the Lists "See More" URL are read out of the page and requested with the session; both made a relative value absolute but requested an absolute value as it stood, so a page naming another host would have been fetched with the library's headers and its response parsed as Amazon's. `util.resolve_site_url()` now resolves such values against `BASE_URL` and drops any whose scheme or host differs (`www.` ignored), logging a warning; the walks end there with `stop_reason="off_origin_next_page"` on `last_history_pull` / `last_list_pull`, and `WishListPageResult.next_page_off_origin` reports it on the parse-from-string path. The gift-card and transactions walks POST page state to fixed URLs and were never affected.
-- `GiftCardActivity.order_number` is now read from the row's Order link, so older four-digit-prefix Order numbers (`4000-…`, seen on 2015 ledger rows) resolve too; they previously came back `None`, losing the Order reference. A link whose text is not an Order number yields `None` with a warning.
-- `GiftCardActivity.order_number` now resolves digital (`D01-…`) Order IDs — ledger rows anchored to digital orders previously lost their Order reference entirely.
-- Row-level parse failures during `get_gift_card_activity()` pagination now carry the documented resume metadata (`next_page_url`, `partial_activity`) instead of raising without `meta`.
 - `AmazonOrders.last_history_pull` is no longer populated when a `full_details` pull fails mid-fetch, honoring its stays-`None`-on-failure contract.
 - `digital-orders --year --all` now fails explicitly instead of silently ignoring `--year`.
-- `get_gift_card_activity()` logs a warning when activity dates fail to parse (the `days` window cannot apply to such rows), instead of silently walking the full ledger.
 - `Parsable.safe_parse()` now also degrades a field on `TypeError` and `RecursionError`, which is what page-embedded JSON produces when it is valid but not the expected shape (the Order address fallback wraps it in `BeautifulSoup`) or nested deeply enough to exhaust the interpreter's stack (`json.loads` raises `RecursionError`, a `RuntimeError`, not a `ValueError`). Previously either aborted the whole entity instead of degrading one field. Required-field errors still propagate.
 - `AmazonRewards` now raises `AmazonOrdersError` rather than a bare `RecursionError` on deeply nested page data.
+
+## [4.7.1](https://github.com/alexdlaird/amazon-orders/compare/4.7.0...4.7.1) - 2026-10-07
+
+### Added
+
+- `AmazonGiftCards`, the `GiftCardActivity` entity, and the `gift-card-balance` and `gift-card-activity` CLI commands, for the Gift Card balance and activity.
+
+### Fixed
+
+- Headers passed to an `AmazonSession` request now take precedence over `BASE_HEADERS`.
+- Bug fixes and stability improvements.
 
 ## [4.7.0](https://github.com/alexdlaird/amazon-orders/compare/4.6.1...4.7.0) - 2026-10-06
 

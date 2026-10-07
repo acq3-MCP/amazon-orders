@@ -22,6 +22,7 @@ Main Interface
 .. automodule:: amazonorders.gift_cards
     :members:
     :private-members:
+    :undoc-members:
     :show-inheritance:
 
 .. automodule:: amazonorders.rewards
@@ -127,11 +128,6 @@ Entities
     :undoc-members:
     :show-inheritance:
 
-.. automodule:: amazonorders.entity.gift_card_activity
-    :members:
-    :private-members:
-    :show-inheritance:
-
 .. automodule:: amazonorders.entity.rewards_balance
     :members:
     :private-members:
@@ -173,6 +169,12 @@ Entities
     :show-inheritance:
 
 .. automodule:: amazonorders.entity.transaction
+    :members:
+    :private-members:
+    :undoc-members:
+    :show-inheritance:
+
+.. automodule:: amazonorders.entity.gift_card_activity
     :members:
     :private-members:
     :undoc-members:

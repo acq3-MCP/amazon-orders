@@ -168,21 +168,19 @@ Order #{order_number}
     def gift_card_activity_text(self,
                                 activity: GiftCardActivity) -> str:
         """
-        Render a GiftCardActivity entry as human-readable text.
+        Render a GiftCardActivity as human-readable text.
 
         :param activity: The GiftCardActivity to render.
         :return: The GiftCardActivity as text.
         """
         activity_str = f"Gift Card Activity: {activity.activity_date}"
-        if activity.description:
-            activity_str += f"\n  Description: {activity.description}"
+        activity_str += f"\n  Description: {activity.description}"
         if activity.amount is not None:
             activity_str += f"\n  Amount: {self.config.constants.format_currency(activity.amount)}"
         if activity.closing_balance is not None:
             activity_str += f"\n  Closing Balance: {self.config.constants.format_currency(activity.closing_balance)}"
         if activity.order_number:
             activity_str += f"\n  Order #{activity.order_number}"
-            activity_str += f"\n  Order Details Link: {activity.order_details_link}"
 
         return activity_str
 
