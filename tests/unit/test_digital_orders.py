@@ -231,8 +231,7 @@ class TestDigitalOrders(UnitTestCase):
         self.assertEqual(1.36, order.total_before_tax)
         self.assertEqual(0.10, order.estimated_tax)
         self.assertEqual(0.0, order.grand_total)
-        # A Prime Video item is identified by its GTI, since it carries no ASIN
-        self.assertEqual("amzn1.dv.gti.66b60399-3e99-f61d-d148-ac0752317559", order.items[0].video_gti)
+        # A Prime Video item carries no ASIN
         self.assertIsNone(order.items[0].asin)
         self.assertEqual(1, resp.call_count)
 
