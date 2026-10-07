@@ -140,8 +140,7 @@ class Selectors:
     ORDER_HISTORY_COUNT_SELECTOR = [".js-yo-container span.num-orders",
                                     "form.js-time-filter-form label.time-filter__label b"]
     ORDER_HISTORY_TIME_FILTER_OPTIONS_SELECTOR = "form.js-time-filter-form select[name='timeFilter'] option"
-    # The client-side-decryption container. Readable pages also use it for a single field (e.g. an address),
-    # so an Order card is only encrypted when it holds this and no readable Order number
+    # Readable pages also encrypt single fields in this, so a card is encrypted only if its Order number is unreadable
     ORDER_HISTORY_CSD_ENCRYPTED_SELECTOR = "div.csd-encrypted-sensitive"
     ORDER_DETAILS_ENTITY_SELECTOR = ["div#orderDetails",
                                      "div#ordersContainer",
@@ -351,16 +350,10 @@ class Selectors:
         "div.apx-transactions-line-item-component-container :has(a.a-link-normal) + div"]
 
     #####################################
-    # CSS selectors for GiftCardActivity fields
-    #
-    # The /gc/balance page renders activity as a plain bordered table
-    # (Date | Description | Amount | Closing balance) with link-based
-    # pagination, not the payments-portal widget the Transaction history
-    # page uses.
+    # CSS selectors for Gift Card fields
     #####################################
 
     GIFT_CARD_BALANCE_SELECTOR = "#gc-ui-balance-gc-balance-value"
-
     GIFT_CARD_ACTIVITY_TABLE_SELECTOR = "div#gc-balance-table table.a-bordered"
     GIFT_CARD_ACTIVITY_SELECTOR = "tr:has(> td)"
     GIFT_CARD_ACTIVITY_NEXT_PAGE_LINK_SELECTOR = "div#gc-balance-table ul.a-pagination li.a-last a"

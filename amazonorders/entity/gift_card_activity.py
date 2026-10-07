@@ -16,8 +16,8 @@ logger = logging.getLogger(__name__)
 
 class GiftCardActivity(Parsable):
     """
-    An entry in the Amazon Gift Card activity ledger (for instance, an amount applied to an
-    Order, a Reload, or a refund credited back to the balance).
+    An entry in the Amazon Gift Card activity ledger, such as a Gift Card applied to an Order, a claim
+    code redemption, a Reload, or a refund.
     """
 
     def __init__(self,
@@ -26,29 +26,19 @@ class GiftCardActivity(Parsable):
         super().__init__(parsed, config)
 
         #: The GiftCardActivity date.
-        self.activity_date: Optional[date] = self.safe_simple_parse(
-            selector=self.config.selectors.FIELD_GIFT_CARD_ACTIVITY_DATE_SELECTOR,
-            parse_date=True
-        )
+        self.activity_date: Optional[date] = self.safe_parse(self._parse_activity_date)
         #: The GiftCardActivity description.
         self.description: Optional[str] = self.safe_simple_parse(
-            selector=self.config.selectors.FIELD_GIFT_CARD_ACTIVITY_DESCRIPTION_SELECTOR
-        )
-        #: The GiftCardActivity amount. Negative when the balance was debited (e.g. applied to
-        #: an Order), positive when it was credited (e.g. a Reload or refund). ``None`` only when
-        #: the amount could not be parsed and ``warn_on_missing_required_field`` is set.
+            selector=self.config.selectors.FIELD_GIFT_CARD_ACTIVITY_DESCRIPTION_SELECTOR)
+        #: The GiftCardActivity amount, negative when the balance was debited and positive when it was credited.
         self.amount: Optional[float] = self.safe_parse(self._parse_amount)
         #: The GiftCardActivity credited the balance or not.
         self.is_credit: bool = bool(self.amount and self.amount > 0)
-        #: The Gift Card balance after this activity was applied.
+        #: The Gift Card balance after this GiftCardActivity.
         self.closing_balance: Optional[float] = self.safe_parse(self._parse_closing_balance)
-        #: The Order number the GiftCardActivity references, read from the row's Order link (physical
-        #: ``111-…``, digital ``D01-…``, or older ``4000-…`` IDs). ``None`` when the row renders no
-        #: Order anchor: claim code redemptions and some refund rows, but also some applied-to-order
-        #: debit rows (observed in the wild on small amounts, likely digital orders), so ``None`` on a
-        #: debit is expected page behavior, not data loss.
+        #: The Order number the GiftCardActivity references, or ``None`` when the row links no Order.
         self.order_number: Optional[str] = self.safe_parse(self._parse_order_number)
-        #: The Order details link. ``None`` whenever :attr:`order_number` is ``None``.
+        #: The Order details link, or ``None`` when the row links no Order.
         self.order_details_link: Optional[str] = self.safe_parse(self._parse_order_details_link)
 
     def __repr__(self) -> str:
@@ -57,25 +47,35 @@ class GiftCardActivity(Parsable):
     def __str__(self) -> str:  # pragma: no cover
         return f"GiftCardActivity {self.activity_date}: {self.description}, Amount: {self.amount}"
 
-    def _parse_amount(self) -> Union[float, int, None]:
-        value = self.simple_parse(self.config.selectors.FIELD_GIFT_CARD_ACTIVITY_AMOUNT_SELECTOR)
+    def _parse_activity_date(self) -> Optional[date]:
+        value = self.simple_parse(self.config.selectors.FIELD_GIFT_CARD_ACTIVITY_DATE_SELECTOR, parse_date=True)
 
-        value = self.to_currency(value)
-
-        if value is None:  # pragma: no cover
-            err_msg = ("GiftCardActivity.amount did not populate, but it's required. "
-                       "Check if Amazon changed the HTML.")
+        if value is None:
+            err_msg = ("GiftCardActivity.activity_date could not be parsed, but it's required. "
+                       "Check if Amazon changed the HTML")
             if not self.config.warn_on_missing_required_field:
-                raise AmazonOrdersError(err_msg)
-            else:
-                logger.warning(err_msg)
+                raise AmazonOrdersError(f"{err_msg} or set warn_on_missing_required_field=True in config.")
+
+            logger.warning(f"{err_msg}.")
+
+        return value
+
+    def _parse_amount(self) -> Union[float, int, None]:
+        value = self.to_currency(self.simple_parse(self.config.selectors.FIELD_GIFT_CARD_ACTIVITY_AMOUNT_SELECTOR))
+
+        if value is None:
+            err_msg = ("GiftCardActivity.amount could not be parsed, but it's required. "
+                       "Check if Amazon changed the HTML")
+            if not self.config.warn_on_missing_required_field:
+                raise AmazonOrdersError(f"{err_msg} or set warn_on_missing_required_field=True in config.")
+
+            logger.warning(f"{err_msg}.")
 
         return value
 
     def _parse_closing_balance(self) -> Union[float, int, None]:
-        value = self.simple_parse(self.config.selectors.FIELD_GIFT_CARD_ACTIVITY_CLOSING_BALANCE_SELECTOR)
-
-        return self.to_currency(value)
+        return self.to_currency(
+            self.simple_parse(self.config.selectors.FIELD_GIFT_CARD_ACTIVITY_CLOSING_BALANCE_SELECTOR))
 
     def _parse_order_number(self) -> Optional[str]:
         value = self.simple_parse(self.config.selectors.FIELD_GIFT_CARD_ACTIVITY_ORDER_NUMBER_SELECTOR)
@@ -94,10 +94,5 @@ class GiftCardActivity(Parsable):
         if not self.order_number:
             return None
 
-        value = self.simple_parse(self.config.selectors.FIELD_GIFT_CARD_ACTIVITY_ORDER_LINK_SELECTOR,
-                                  attr_name="href")
-
-        if not value:
-            value = f"{self.config.constants.ORDER_DETAILS_URL}?orderID={self.order_number}"
-
-        return value
+        return self.simple_parse(self.config.selectors.FIELD_GIFT_CARD_ACTIVITY_ORDER_LINK_SELECTOR,
+                                 attr_name="href")

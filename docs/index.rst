@@ -101,31 +101,6 @@ to the ``history`` CLI command), since by default it is ``False`` (enabling it s
 request for each order is necessary). Have a look at the :class:`~amazonorders.entity.order.Order` entity's docs to see
 what fields are only populated with full details.
 
-Gift Cards
-----------
-
-:class:`~amazonorders.gift_cards.AmazonGiftCards` reads the Gift Card balance and the activity ledger behind
-it (claim code redemptions, amounts applied to Orders, refunds credited back, and reloads). It is read-only;
-redeeming claim codes and reloading a balance are not supported.
-
-.. code:: python
-
-    from amazonorders.gift_cards import AmazonGiftCards
-
-    gift_cards = AmazonGiftCards(amazon_session)
-
-    balance = gift_cards.get_balance()
-
-    for entry in gift_cards.get_gift_card_activity(days=90):
-        print(f"{entry.activity_date} - {entry.description} - {entry.amount}")
-
-Each :class:`~amazonorders.entity.gift_card_activity.GiftCardActivity` carries a signed
-:attr:`~amazonorders.entity.gift_card_activity.GiftCardActivity.amount` (debits are negative) and the
-:attr:`~amazonorders.entity.gift_card_activity.GiftCardActivity.closing_balance` after it, so the ledger's
-running balance can be verified. Rows applied to an Order also carry
-:attr:`~amazonorders.entity.gift_card_activity.GiftCardActivity.order_number`, which is ``None`` on the rows
-Amazon renders without an Order link.
-
 Rewards
 -------
 
@@ -253,6 +228,23 @@ You can also run any command available to the main Python interface from the com
     amazon-orders prime-payments
     amazon-orders wish-lists
     amazon-orders wish-list <LIST_ID>
+
+Gift Cards
+----------
+
+:class:`~amazonorders.gift_cards.AmazonGiftCards` reads the Gift Card balance and its activity, such as
+Gift Cards applied to Orders, claim code redemptions, Reloads, and refunds.
+
+.. code:: python
+
+    from amazonorders.gift_cards import AmazonGiftCards
+
+    amazon_gift_cards = AmazonGiftCards(amazon_session)
+
+    balance = amazon_gift_cards.get_balance()
+    activity = amazon_gift_cards.get_gift_card_activity(days=365)
+
+The same is available from the ``gift-card-balance`` and ``gift-card-activity`` CLI commands.
 
 Output Formats
 --------------
