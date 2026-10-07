@@ -637,6 +637,17 @@ class TestLists(UnitTestCase):
         # THEN purchased
         self.assertTrue(item.purchased)
 
+    def test_wish_list_item_negative_priority(self):
+        # GIVEN an item given the "lowest" priority, which the page encodes below medium's 0
+        item_tag = self._item_tag(self._read_resource("wish-list-shared-edited.html"), "I3W1WERO0RFQBJ")
+        item_tag.select_one("span#itemPriority_I3W1WERO0RFQBJ").string = "-2"
+
+        # WHEN
+        item = WishListItem(item_tag, self.test_config)
+
+        # THEN
+        self.assertEqual(-2, item.priority)
+
     def test_wish_list_item_purchased_without_quantities(self):
         # GIVEN a purchased item whose quantity row is gone
         item_tag = self._item_tag(self._read_resource("wish-list-shared-edited.html"), "I3JOF2YQGGDZQY")

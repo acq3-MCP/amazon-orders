@@ -63,7 +63,8 @@ class WishListCollaborator(Parsable):
     def _parse_is_owner(self) -> bool:
         tag = util.select_one(self.parsed, self.config.selectors.FIELD_WISH_LIST_COLLABORATOR_ROLE_SELECTOR)
 
-        return tag is not None and tag.text.strip().lower() == "owner"
+        return (tag is not None
+                and tag.text.strip().lower() == self.config.selectors.FIELD_WISH_LIST_COLLABORATOR_OWNER_TEXT.lower())
 
 
 class WishList(Parsable):
@@ -203,10 +204,10 @@ class WishList(Parsable):
         return tag.text.strip().lower() if tag is not None else ""
 
     def _parse_is_default(self) -> bool:
-        return "default" in self._parse_label()
+        return self.config.selectors.FIELD_WISH_LIST_ENTRY_DEFAULT_TEXT.lower() in self._parse_label()
 
     def _parse_is_collaborative(self) -> bool:
         if util.select_one(self.parsed, self.config.selectors.FIELD_WISH_LIST_ENTRY_COLLABORATIVE_ICON_SELECTOR):
             return True
 
-        return "collaborator" in self._parse_label()
+        return self.config.selectors.FIELD_WISH_LIST_ENTRY_COLLABORATOR_TEXT.lower() in self._parse_label()

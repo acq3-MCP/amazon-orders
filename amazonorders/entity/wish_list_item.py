@@ -22,7 +22,6 @@ EXTERNAL_ID_ASIN_REGEX = re.compile(r"ASIN:([A-Z0-9]{10})")
 #: The ASIN inside a product link (``/dp/B0C1G62PNP/``).
 LINK_ASIN_REGEX = re.compile(r"/dp/([A-Z0-9]{10})")
 #: The rating inside its accessible text (``4.7 out of 5 stars``).
-RATING_REGEX = re.compile(r"([\d.]+)\s+out of")
 
 
 class WishListItem(Parsable):
@@ -178,7 +177,9 @@ class WishListItem(Parsable):
         if byline is None:
             return None
 
-        return re.sub(r"^by\s+", "", byline) or None
+        prefix = self.config.selectors.FIELD_WISH_LIST_ITEM_BYLINE_PREFIX
+
+        return re.sub(rf"^{re.escape(prefix)}\s+", "", byline) or None
 
     def _parse_price(self) -> Optional[float]:
         value = self.parsed.get("data-price")
@@ -227,7 +228,7 @@ class WishListItem(Parsable):
         if value is None:
             return None
 
-        return int(value.replace(",", ""))
+        return int(value.replace(self.config.constants.THOUSANDS_SEPARATOR, ""))
 
     def _parse_quantity_requested(self) -> Optional[int]:
         return self._parse_int(self.config.selectors.FIELD_WISH_LIST_ITEM_REQUESTED_SELECTOR)
@@ -253,7 +254,7 @@ class WishListItem(Parsable):
 
     def _parse_rating(self) -> Optional[float]:
         value = self._text(self.config.selectors.FIELD_WISH_LIST_ITEM_RATING_SELECTOR)
-        match = RATING_REGEX.search(value) if value else None
+        match = re.search(self.config.selectors.FIELD_WISH_LIST_ITEM_RATING_REGEX, value) if value else None
 
         return float(match.group(1)) if match else None
 

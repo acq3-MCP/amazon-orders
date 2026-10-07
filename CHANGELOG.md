@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased](https://github.com/alexdlaird/amazon-orders/compare/4.6.1...HEAD)
+## [Unreleased](https://github.com/alexdlaird/amazon-orders/compare/4.7.0...HEAD)
 
 ### Added
 
@@ -35,6 +35,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- Synced with upstream 4.7.0. Page text and formats now come from `Selectors` and `Constants` so a language package can override them, and the page-text guard covers the fork's parsers: the wish-list labels (`Default`, `Collaborator`, `Owner`), the byline prefix, and the rating pattern are `Selectors` attributes, and Gift Card and Prime payment Order numbers are found with `Constants.parse_order_number()`. `ORDER_NUMBER_REGEX` gains the older `NNNN-NNNNNN-NNNNNNN` shape the Gift Card ledger still links, as upstream's merged Gift Card change does.
+- The encrypted-card check no longer treats a card inside a decryption container as encrypted; only a card holding one with an unreadable Order number counts, as upstream's merged check does.
 - `RewardsBalance` now extends `Parsable` (its `parsed` is the page's `__NEXT_DATA__` script tag), so it has `to_dict()` and renders in every `OutputFormatter` format. Its constructor now takes the tag before the card entry.
 - Synced with upstream 4.6.1: the `util.select()`/`select_one()`, transactions `D01-`/`seller`, and cancelled-layout fixes the fork carried now come from upstream as merged there, and currency parsing accepts either decimal mark. Transaction dates that fail to parse now raise `AmazonOrdersEntityError` unless `warn_on_missing_required_field` is set.
 - Synced with upstream 4.6.0. `ORDER_HISTORY_CSD_ENCRYPTED_SELECTOR` now keys on the encrypted payload call rather than the no-JS fallback, which readable Whole Foods Market pages also carry.
@@ -52,6 +54,19 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - `get_gift_card_activity()` logs a warning when activity dates fail to parse (the `days` window cannot apply to such rows), instead of silently walking the full ledger.
 - `Parsable.safe_parse()` now also degrades a field on `TypeError` and `RecursionError`, which is what page-embedded JSON produces when it is valid but not the expected shape (the Order address fallback wraps it in `BeautifulSoup`) or nested deeply enough to exhaust the interpreter's stack (`json.loads` raises `RecursionError`, a `RuntimeError`, not a `ValueError`). Previously either aborted the whole entity instead of degrading one field. Required-field errors still propagate.
 - `AmazonRewards` now raises `AmazonOrdersError` rather than a bare `RecursionError` on deeply nested page data.
+
+## [4.7.0](https://github.com/alexdlaird/amazon-orders/compare/4.6.1...4.7.0) - 2026-10-06
+
+### Added
+
+- `parse_currency()`, `parse_date()`, `parse_count()`, and `parse_order_number()` on `Constants`, and page text attributes on `Selectors` (e.g. `FIELD_ORDER_GRAND_TOTAL_LABELS`), so every word and format the parsers use can be overridden.
+- `TransactionsPage`, `Transaction.from_fields()`, and the `transactions_page_class` and `transaction_class` config keys, to override how the Transactions page and its Transactions are parsed.
+- `language_package` config key, to use a separately published language package. See [the docs](https://amazon-orders.readthedocs.io/language-packages.html) for building one.
+- Currency symbols for more non-`.com` Amazon sites (e.g. `amazon.pl`, `amazon.com.tr`, `amazon.ae`).
+
+### Fixed
+
+- Bug fixes and stability improvements.
 
 ## [4.6.1](https://github.com/alexdlaird/amazon-orders/compare/4.6.0...4.6.1) - 2026-10-03
 
@@ -151,10 +166,6 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Fixed
 
 - Parsing of some `Order` fields on older order pages using the `chargeSummary` layout.
-
-### Fixed
-
-- Fixed parsing of some `Order` fields on older order pages using the `chargeSummary` layout.
 
 ## [4.4.0](https://github.com/alexdlaird/amazon-orders/compare/4.3.1...4.4.0) - 2026-06-12
 
