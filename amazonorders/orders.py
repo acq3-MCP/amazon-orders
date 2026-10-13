@@ -585,8 +585,7 @@ class AmazonOrders:
             self.amazon_session.check_response(page_response, meta={"index": current_index})
 
             if self._is_csd_encrypted_page(page_response.parsed, self.config):
-                # The session sends csd-key=disabled, so Amazon should not encrypt; if it does anyway, its
-                # no-JavaScript fallback renders the same page readable
+                # Amazon's no-JavaScript fallback renders the same page readable
                 logger.debug("Order history page was encrypted, requesting its no-JavaScript fallback")
                 page_response = self.amazon_session.get(self._with_csd_disabled(next_page))
                 self.amazon_session.check_response(page_response, meta={"index": current_index})
