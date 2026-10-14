@@ -41,10 +41,6 @@ Amazon Orders - A Python library (and CLI) for Amazon order history, line items,
 
 ``amazon-orders`` is an unofficial library that provides a Python API (and CLI) for Amazon order history, line items, and transactions.
 
-``amazon-orders`` core supports Amazon's English ``.com`` site, validated nightly. Other English Amazon sites can be
-targeted with the ``domain`` config option, and other languages plug in through
-:doc:`language packages <language-packages>`.
-
 .. note::
 
     This package works by parsing data from Amazon's consumer-facing website. A periodic build validates
@@ -64,15 +60,16 @@ using ``pip``:
 
 That's it! ``amazon-orders`` is now available as a package to your Python projects and from the command line.
 
-If pinning, be sure to use a wildcard for the `minor version <https://semver.org/>`_ (e.g. ``==4.8.*``, not ``==4.8.0``)
+If pinning, be sure to use a wildcard for the `minor version <https://semver.org/>`_ (e.g. ``==4.9.*``, not ``==4.9.0``)
 to ensure you always get the latest stable release.
 
 Basic Usage
 ===========
 
 You'll use :class:`~amazonorders.session.AmazonSession` to authenticate your Amazon account, then
-:class:`~amazonorders.orders.AmazonOrders` and :class:`~amazonorders.transactions.AmazonTransactions` to interact with
-account data. :func:`~amazonorders.orders.AmazonOrders.get_order_history` and
+:class:`~amazonorders.orders.AmazonOrders`, :class:`~amazonorders.transactions.AmazonTransactions`, and
+:class:`~amazonorders.gift_cards.AmazonGiftCards` to interact with account data.
+:func:`~amazonorders.orders.AmazonOrders.get_order_history` and
 :func:`~amazonorders.orders.AmazonOrders.get_order` are good places to start.
 
 .. code:: python
@@ -100,27 +97,6 @@ If the fields you're looking for aren't populated with the above, set ``full_det
 to the ``history`` CLI command), since by default it is ``False`` (enabling it slows down querying, since an additional
 request for each order is necessary). Have a look at the :class:`~amazonorders.entity.order.Order` entity's docs to see
 what fields are only populated with full details.
-
-Secure Sign-In
---------------
-
-The most secure way to use ``amazon-orders`` is to sign in on Amazon's own page, in a browser window, so your password,
-one-time password, and any challenge never reach ``amazon-orders``:
-
-.. code:: sh
-
-    amazon-orders login --browser
-
-The session is persisted, so neither the CLI nor the Python API needs credentials:
-
-.. code:: python
-
-    from amazonorders.session import AmazonSession
-
-    amazon_session = AmazonSession()
-    amazon_session.login()
-
-See :doc:`browser` for details.
 
 Rewards
 -------
@@ -250,23 +226,6 @@ You can also run any command available to the main Python interface from the com
     amazon-orders wish-lists
     amazon-orders wish-list <LIST_ID>
 
-Gift Cards
-----------
-
-:class:`~amazonorders.gift_cards.AmazonGiftCards` reads the Gift Card balance and its activity, such as
-Gift Cards applied to Orders, claim code redemptions, Reloads, and refunds.
-
-.. code:: python
-
-    from amazonorders.gift_cards import AmazonGiftCards
-
-    amazon_gift_cards = AmazonGiftCards(amazon_session)
-
-    balance = amazon_gift_cards.get_balance()
-    activity = amazon_gift_cards.get_gift_card_activity(days=365)
-
-The same is available from the ``gift-card-balance`` and ``gift-card-activity`` CLI commands.
-
 Output Formats
 --------------
 
@@ -297,6 +256,29 @@ which converts it and its nested entities to a ``dict`` of primitives.
 See :class:`~amazonorders.output.OutputFormatter` for each format's contract, and to override how
 entities are rendered.
 
+.. _secure-sign-in:
+
+Secure Sign-In
+--------------
+
+The most secure way to use ``amazon-orders`` is to sign in on Amazon's own page, in a browser window, so ``amazon-orders``
+never needs to store your credentials:
+
+.. code:: sh
+
+    amazon-orders login --browser
+
+The session is persisted, so neither the CLI nor the Python API needs credentials:
+
+.. code:: python
+
+    from amazonorders.session import AmazonSession
+
+    amazon_session = AmazonSession()
+    amazon_session.login()
+
+This requires a display and the ``browser`` extra (see :ref:`Browser Automation <browser-installation>` to install it).
+
 Automating Authentication
 -------------------------
 
@@ -307,6 +289,11 @@ environment variables ``amazon-orders`` looks for are:
 - ``AMAZON_USERNAME``
 - ``AMAZON_PASSWORD``
 - ``AMAZON_OTP_SECRET_KEY`` (see :attr:`~amazonorders.session.AmazonSession.otp_secret_key`)
+
+Any other config value can be set the same way, as ``AMAZON_<KEY>`` (see :class:`~amazonorders.conf.AmazonOrdersConfig`).
+
+Handling Challenges
+-------------------
 
 To enable **WAF auto-solve** via a third-party integration, install with the relevant extra:
 
@@ -324,7 +311,6 @@ a headless browser, install with the ``browser`` extra:
 .. code:: sh
 
     pip install amazon-orders[browser]
-    playwright install chromium
 
 See :doc:`browser` for details.
 
@@ -339,10 +325,13 @@ See :ref:`Login Challenges <login-challenges>` for details.
 Languages and Regions
 ---------------------
 
-``amazon-orders`` core supports the English ``.com`` site, validated nightly.
+``amazon-orders`` reads Amazon's pages in English. The ``.com`` site is validated nightly.
 
-- **Other English sites** (e.g. ``amazon.ca``, ``amazon.co.uk``): set the ``domain`` config option.
-- **Other languages**: install a language package and set ``language_package``. See :doc:`language-packages`.
+- **Any other site that offers English** (e.g. ``amazon.co.uk``, or ``amazon.de``): set the
+  ``domain`` in the :class:`config <amazonorders.conf.AmazonOrdersConfig>`. These are supported on a best-effort basis. See :ref:`Supported Sites <supported-sites>`.
+- **Any site, in another language**: install a language package and set ``language_package``. A language package
+  lets ``amazon-orders`` read the site's pages; its own CLI and messages stay in English. See
+  :doc:`language-packages`.
 
 .. _known-limitations:
 

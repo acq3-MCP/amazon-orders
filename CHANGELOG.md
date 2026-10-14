@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased](https://github.com/alexdlaird/amazon-orders/compare/4.8.0...HEAD)
+## [Unreleased](https://github.com/alexdlaird/amazon-orders/compare/4.9.0...HEAD)
 
 ### Added
 
@@ -29,6 +29,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- Synced with upstream 4.9.0 (and 4.8.1). `get_order_history_page()` and `PagedResults` come from upstream, as do `REQUEST_COOKIES`, `AMAZON_<KEY>` environment variables for every config value, and the browser choice for `login --browser`. Upstream restructured the history walk; the fork's `disableCsd=no-js` re-request, off-origin pager check, and `last_history_pull` counters are carried onto it. `last_history_pull` stays a record of `get_order_history()` calls only: a `get_order_history_page()` batch leaves it as it was.
 - Synced with upstream 4.8.0. `login --browser` and `PlaywrightBrowserLogin`, and package `Tracking` with `AmazonOrders.get_tracking()`, come from upstream. Upstream's stricter mypy settings now cover the fork's modules, which pass them unchanged.
 - Synced with upstream 4.7.1. Gift Cards are upstream's (alexdlaird/amazon-orders#141): `AmazonGiftCards`, `GiftCardActivity`, the CLI commands, and the fixtures match upstream, and `parse_gift_card_activity()` parses an already-fetched page. The encrypted-card check is upstream's `AmazonOrders._is_csd_encrypted()` (alexdlaird/amazon-orders#143), and `parse_order_history()` raises upstream's message for such a page; the fork keeps the `disableCsd=no-js` re-request and the `csd_encrypted` page type on top of it. The Order history helpers are methods on `AmazonOrders`, as upstream moved its own, and `parse_order_history_page()` is a classmethod.
 - Synced with upstream 4.7.0. Page text and formats now come from `Selectors` and `Constants` so a language package can override them, and the page-text guard covers the fork's parsers: the wish-list labels (`Default`, `Collaborator`, `Owner`), the byline prefix, and the rating pattern are `Selectors` attributes, and Gift Card and Prime payment Order numbers are found with `Constants.parse_order_number()`. `ORDER_NUMBER_REGEX` gains the older `NNNN-NNNNNN-NNNNNNN` shape the Gift Card ledger still links, as upstream's merged Gift Card change does.
@@ -51,6 +52,41 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - `digital-orders --year --all` now fails explicitly instead of silently ignoring `--year`.
 - `Parsable.safe_parse()` now also degrades a field on `TypeError` and `RecursionError`, which is what page-embedded JSON produces when it is valid but not the expected shape (the Order address fallback wraps it in `BeautifulSoup`) or nested deeply enough to exhaust the interpreter's stack (`json.loads` raises `RecursionError`, a `RuntimeError`, not a `ValueError`). Previously either aborted the whole entity instead of degrading one field. Required-field errors still propagate.
 - `AmazonRewards` now raises `AmazonOrdersError` rather than a bare `RecursionError` on deeply nested page data.
+
+## [4.9.0](https://github.com/alexdlaird/amazon-orders/compare/4.8.1...4.9.0) - 2026-10-14
+
+### Added
+
+- English pages on any Amazon site that offers them, with `domain` and no language package (e.g. `amazon.de`, `amazon.fr`, `amazon.co.jp`).
+- Sign-in and currency symbols for more non-`.com` Amazon sites (e.g. `amazon.fr`, `amazon.co.za`).
+- Browser sign-in with any browser Playwright supports, using the installed Chrome by default, with `browser` and `browser_executable_path`.
+- `AMAZON_<KEY>` environment variables for every config value (e.g. `AMAZON_MAX_AUTH_ATTEMPTS`).
+
+### Changed
+
+- To read another language on a site that offers English, set `REQUEST_COOKIES` or `Accept-Language` to it in your language package or `constants_class`. See [the docs](https://amazon-orders.readthedocs.io/language-packages.html#building-a-language-package).
+
+### Deprecated
+
+- `AMAZON_BASE_URL`, use `AMAZON_DOMAIN`.
+
+### Removed
+
+- `AMAZON_CURRENCY_SYMBOL`.
+
+### Fixed
+
+- Bug fixes and stability improvements.
+
+## [4.8.1](https://github.com/alexdlaird/amazon-orders/compare/4.8.0...4.8.1) - 2026-10-13
+
+### Added
+
+- `Constants.REQUEST_COOKIES`, to send cookies with every request.
+
+### Fixed
+
+- Bug fixes and stability improvements.
 
 ## [4.8.0](https://github.com/alexdlaird/amazon-orders/compare/4.7.1...4.8.0) - 2026-10-09
 

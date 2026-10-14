@@ -6,11 +6,13 @@ import sys
 import unittest
 from unittest.mock import MagicMock, patch
 
+import requests
 import responses
 from bs4 import BeautifulSoup
 from responses.matchers import query_string_matcher, urlencoded_params_matcher
 
 from amazonorders.conf import AmazonOrdersConfig
+from amazonorders.constants import Constants
 from amazonorders.exception import AmazonOrdersAuthError, AmazonOrdersError
 from amazonorders.forms import JSAuthBlocker, MfaDeviceSelectForm
 from amazonorders.session import AmazonSession, IODefault
@@ -114,6 +116,45 @@ class TestSession(UnitTestCase):
         # THEN the debug write provisioned the output dir itself
         self.assertTrue(os.path.exists(self.test_output_dir))
         self.assertEqual(1, len(os.listdir(self.test_output_dir)))
+
+    @responses.activate
+    def test_request_cookies(self):
+        # GIVEN
+        config = AmazonOrdersConfig(data={
+            "constants_class": "tests.unit.test_session.RequestCookiesConstants",
+            "domain": "amazon.de",
+            "output_dir": self.test_output_dir,
+            "cookie_jar_path": self.test_cookie_jar_path,
+        })
+        amazon_session = AmazonSession("some-username@gmail.com", "some-password", config=config)
+        amazon_session.session.cookies.set("lc-acbde", "de_DE", domain=".amazon.de", path="/")
+        amazon_session.session.cookies.set("session-id", "some-session-id", domain=".amazon.de", path="/")
+        url = f"{config.constants.BASE_URL}/some/page"
+        responses.add(responses.GET, url, body="<html></html>", status=200,
+                      headers={"Set-Cookie": "lc-acbde=de_DE; Domain=.amazon.de; Path=/"})
+
+        # WHEN
+        amazon_session.get(url)
+        amazon_session.get(url)
+
+        # THEN
+        for call in responses.calls:
+            cookie_header = call.request.headers["Cookie"]
+            self.assertIn("lc-acbde=en_GB", cookie_header)
+            self.assertNotIn("de_DE", cookie_header)
+            self.assertIn("session-id=some-session-id", cookie_header)
+
+    @responses.activate
+    def test_only_language_cookie_by_default(self):
+        # GIVEN
+        url = f"{self.test_config.constants.BASE_URL}/some/page"
+        responses.add(responses.GET, url, body="<html></html>", status=200)
+
+        # WHEN
+        self.amazon_session.get(url)
+
+        # THEN
+        self.assertEqual("lc-main=en_US", responses.calls[0].request.headers["Cookie"])
 
     @responses.activate
     def test_login_claim_invalid_username(self):
@@ -911,6 +952,65 @@ class TestSession(UnitTestCase):
             # THEN
             self.assertEqual(5, mock_request.call_args.kwargs["timeout"])
 
+    @responses.activate
+    def test_request_connection_dropped(self):
+        # GIVEN
+        url = "https://www.amazon.com/"
+        responses.add(responses.GET, url,
+                      body=requests.ConnectionError("Remote end closed connection without response"))
+
+        # WHEN
+        with self.assertRaises(AmazonOrdersError) as cm:
+            self.amazon_session.get(url)
+
+        # THEN
+        self.assertEqual("The page https://www.amazon.com/ returned no response: Remote end closed connection "
+                         "without response. Amazon had an issue on their end, or may be temporarily blocking your "
+                         "requests. Wait a bit before trying again.", str(cm.exception))
+        self.assertIsInstance(cm.exception.__cause__, requests.ConnectionError)
+
+    @responses.activate
+    def test_request_timed_out(self):
+        # GIVEN
+        url = "https://www.amazon.com/"
+        responses.add(responses.GET, url, body=requests.ReadTimeout("Read timed out"))
+
+        # WHEN
+        with self.assertRaises(AmazonOrdersError) as cm:
+            self.amazon_session.get(url)
+
+        # THEN
+        self.assertIn("returned no response: Read timed out. Amazon had an issue on their end", str(cm.exception))
+        self.assertIsInstance(cm.exception.__cause__, requests.ReadTimeout)
+
+    @responses.activate
+    def test_request_too_many_redirects(self):
+        # GIVEN
+        url = "https://www.amazon.com/"
+        responses.add(responses.GET, url, body=requests.TooManyRedirects("Exceeded 30 redirects"))
+
+        # WHEN
+        with self.assertRaises(AmazonOrdersError) as cm:
+            self.amazon_session.get(url)
+
+        # THEN
+        self.assertEqual("The page https://www.amazon.com/ returned no response: Exceeded 30 redirects.",
+                         str(cm.exception))
+
+    def test_credentials_environment_variables_win_over_arguments_and_config(self):
+        # GIVEN
+        with patch.dict(os.environ, {"AMAZON_USERNAME": "env-username", "AMAZON_OTP_SECRET_KEY": "env-otp"}):
+            config = self._config_with(username="config-username", password="config-password")
+
+        # WHEN
+        amazon_session = AmazonSession("argument-username", "argument-password", config=config,
+                                       otp_secret_key="argument-otp")
+
+        # THEN
+        self.assertEqual("env-username", amazon_session.username)
+        self.assertEqual("argument-password", amazon_session.password)
+        self.assertEqual("env-otp", amazon_session.otp_secret_key)
+
 
 class RecordingIO(IODefault):
     def __init__(self, prompt_response):
@@ -990,3 +1090,7 @@ class TestMfaDeviceSelectForm(UnitTestCase):
         self.assertEqual([f"1: {self.SMS_DEVICE_VALUE}",
                           f"2: {self.VOICE_DEVICE_VALUE}"],
                          self.io.choices)
+
+
+class RequestCookiesConstants(Constants):
+    REQUEST_COOKIES = {"lc-acbde": "en_GB"}
