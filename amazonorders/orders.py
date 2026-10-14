@@ -5,7 +5,7 @@ import asyncio
 import concurrent.futures
 import datetime
 import logging
-from typing import Any, Callable, List, Optional
+from typing import Any, Callable, Coroutine, Dict, List, Optional, Tuple
 from urllib.parse import parse_qsl, quote, urlencode, urlsplit, urlunsplit
 
 from bs4 import BeautifulSoup, Tag
@@ -14,7 +14,8 @@ from amazonorders import util
 from amazonorders.conf import AmazonOrdersConfig
 from amazonorders.entity.order import Order
 from amazonorders.entity.tracking import Tracking
-from amazonorders.exception import AmazonOrdersError, AmazonOrdersNotFoundError
+from amazonorders.exception import AmazonOrdersError, AmazonOrdersNotFoundError, AmazonOrdersUnavailableError
+from amazonorders.paging import PagedResults
 from amazonorders.session import AmazonSession
 
 logger = logging.getLogger(__name__)
@@ -118,6 +119,7 @@ class AmazonOrders:
         #: first pull, and reset to ``None`` at the start of each pull (so it stays ``None`` if
         #: the pull raises).
         self.last_history_pull: Optional[OrderHistoryPullResult] = None
+        self._history_pull: Optional[OrderHistoryPullResult] = None
 
     @staticmethod
     def _parse_next_page_href(parsed: Tag,
@@ -285,6 +287,14 @@ class AmazonOrders:
                                             f"{order_id} was not found.",
                                             meta={**(meta or {}), "redirect_url": response_url})
 
+        amazon_message = self._unavailable_message(order_details_response.parsed,
+                                                   self.config.selectors.ORDER_DETAILS_ERROR_SELECTOR)
+        if amazon_message:
+            raise AmazonOrdersUnavailableError(f"Amazon could not load Order {order_id}. It may not exist, or Amazon "
+                                               f"had an issue on their end. Wait a bit before trying again. "
+                                               f"Amazon's page said: \"{amazon_message}\"",
+                                               meta={**(meta or {}), "amazon_message": amazon_message})
+
         order = self._parse_order_details(order_details_response.parsed, self.config, order_number=order_id,
                                           clone=clone)
 
@@ -292,6 +302,22 @@ class AmazonOrders:
             raise AmazonOrdersError(f"Could not parse details for Order {order_id}. Check if Amazon changed the HTML.")
 
         return order
+
+    @staticmethod
+    def _unavailable_message(parsed: Tag,
+                             error_selector: str) -> Optional[str]:
+        """
+        Get the text of Amazon's "could not load" page, if Amazon showed it in place of the requested page. Amazon
+        shows it both when what was requested does not exist and when Amazon had an issue on their end, so its text
+        is passed along for the caller to judge.
+
+        :param parsed: The parsed page.
+        :param error_selector: The selector for Amazon's error container.
+        :return: The error container's text with whitespace collapsed, or ``None`` if the page is not an error page.
+        """
+        error_tag = util.select_one(parsed, error_selector)
+
+        return " ".join(error_tag.get_text(" ").split()) if error_tag else None
 
     @classmethod
     def parse_tracking(cls,
@@ -341,6 +367,15 @@ class AmazonOrders:
                                             f"{shipment_id} of Order {order_id} was not found.",
                                             meta={"redirect_url": response_url})
 
+        amazon_message = self._unavailable_message(tracking_response.parsed,
+                                                   self.config.selectors.TRACKING_ERROR_SELECTOR)
+        if amazon_message:
+            raise AmazonOrdersUnavailableError(f"Amazon could not load tracking for Shipment {shipment_id} of Order "
+                                               f"{order_id}. It may not exist, or Amazon had an issue on their end. "
+                                               f"Wait a bit before trying again. Amazon's page said: "
+                                               f"\"{amazon_message}\"",
+                                               meta={"amazon_message": amazon_message})
+
         tracking = self._parse_tracking(tracking_response.parsed, self.config)
         if not tracking:
             raise AmazonOrdersError(f"Could not parse package tracking for Shipment {shipment_id} of Order "
@@ -368,6 +403,14 @@ class AmazonOrders:
             raise AmazonOrdersNotFoundError(f"Amazon redirected to {response_url}, which likely means Order "
                                             f"{order_id} was not found.", meta={"redirect_url": response_url})
 
+        amazon_message = self._unavailable_message(invoice_response.parsed,
+                                                   self.config.selectors.ORDER_DETAILS_ERROR_SELECTOR)
+        if amazon_message:
+            raise AmazonOrdersUnavailableError(f"Amazon could not load Order {order_id}. It may not exist, or Amazon "
+                                               f"had an issue on their end. Wait a bit before trying again. "
+                                               f"Amazon's page said: \"{amazon_message}\"",
+                                               meta={"amazon_message": amazon_message})
+
         return invoice_response
 
     def get_order_history(self,
@@ -376,7 +419,8 @@ class AmazonOrders:
                           full_details: bool = False,
                           keep_paging: bool = True,
                           time_filter: Optional[str] = None,
-                          order_filter: Optional[str] = None) -> List[Order]:
+                          order_filter: Optional[str] = None,
+                          progress: Optional[Callable[[int], None]] = None) -> List[Order]:
         """
         Get the Amazon Order history for a given time period.
 
@@ -393,15 +437,81 @@ class AmazonOrders:
             ``"months-3"`` (past 3 months), or ``"year-YYYY"`` (specific year). If provided, this takes
             precedence over the ``year`` parameter.
         :param order_filter: The order type filter to use. If provided, appended alongside the time filter.
+        :param progress: Called after each page of history is fetched, with the number of Orders found so far
+            (before their full details are fetched, if ``full_details`` is ``True``).
         :return: A list of the requested Orders.
         """
         if not self.amazon_session.is_authenticated:
             raise AmazonOrdersError("Call AmazonSession.login() to authenticate first.")
 
+        self.last_history_pull = None
+
+        next_page = self._order_history_url(year, start_index, time_filter, order_filter)
+        current_index = int(start_index) if start_index else 0
+
+        orders, _, _ = asyncio.run(self._build_orders_async(next_page, keep_paging, full_details, current_index,
+                                                            progress=progress))
+        self.last_history_pull = self._history_pull
+        return orders
+
+    def get_order_history_page(self,
+                               year: Optional[int] = None,
+                               start_index: Optional[int] = None,
+                               full_details: bool = False,
+                               time_filter: Optional[str] = None,
+                               order_filter: Optional[str] = None,
+                               limit: Optional[int] = None,
+                               cursor: Optional[Dict[str, Any]] = None,
+                               progress: Optional[Callable[[int], None]] = None) -> PagedResults[Order]:
+        """
+        Get a batch of the Amazon Order history for a given time period, with a cursor to fetch the next batch.
+        Takes the same filters as :func:`get_order_history`.
+
+        :param year: The year for which to get history. Ignored if ``time_filter`` or ``cursor`` is provided.
+            Defaults to the current year if neither ``year`` nor ``time_filter`` is specified.
+        :param start_index: The index of the Order from which to start fetching in the history. Ignored if
+            ``cursor`` is provided.
+        :param full_details: Get the full details for each Order in the batch. This will execute an additional
+            request per Order.
+        :param time_filter: The time filter to use, as in :func:`get_order_history`. Ignored if ``cursor`` is
+            provided.
+        :param order_filter: The order type filter to use. Ignored if ``cursor`` is provided.
+        :param limit: Stop fetching history pages once at least this many Orders are collected. Whole pages are
+            fetched, so the batch can hold up to a page more than ``limit``. ``None`` fetches every page.
+        :param cursor: The :attr:`~amazonorders.paging.PagedResults.cursor` of the previous batch, to fetch the
+            next one. The filters it was fetched with carry over.
+        :param progress: Called after each page of history is fetched, with the number of Orders found so far in
+            this batch (before their full details are fetched, if ``full_details`` is ``True``).
+        :return: The batch of Orders, and the cursor for the next one.
+        """
+        if not self.amazon_session.is_authenticated:
+            raise AmazonOrdersError("Call AmazonSession.login() to authenticate first.")
+
+        if cursor:
+            year = None
+            start_index = cursor["start_index"]
+            time_filter = cursor["time_filter"]
+            order_filter = cursor["order_filter"]
+        time_filter = self._history_filter_value(year, time_filter)
+
+        next_page: Optional[str] = self._order_history_url(None, start_index, time_filter, order_filter)
+        current_index = int(start_index) if start_index else 0
+
+        orders, next_page, current_index = asyncio.run(
+            self._build_orders_async(next_page, True, full_details, current_index, limit, progress))
+        next_cursor = {
+            "start_index": current_index,
+            "time_filter": time_filter,
+            "order_filter": order_filter,
+        } if next_page else None
+
+        return PagedResults(orders, next_cursor)
+
+    @staticmethod
+    def _history_filter_value(year: Optional[int],
+                              time_filter: Optional[str]) -> str:
         if time_filter and year:
             raise AmazonOrdersError("Only one of 'year' or 'time_filter' may be used at a time.")
-
-        self.last_history_pull = None
 
         # Determine the filter value to use
         if time_filter:
@@ -419,24 +529,34 @@ class AmazonOrders:
                 year = datetime.date.today().year
             filter_value = f"year-{year}"
 
-        optional_start_index = f"&startIndex={start_index}" if start_index else ""
+        return filter_value
+
+    def _order_history_url(self,
+                           year: Optional[int],
+                           start_index: Optional[int],
+                           time_filter: Optional[str],
+                           order_filter: Optional[str]) -> str:
+        constants = self.config.constants
+        filter_value = self._history_filter_value(year, time_filter)
+        page = int(start_index) // constants.ORDER_HISTORY_PAGE_SIZE if start_index else 0
+        optional_page = (
+            f"&{constants.HISTORY_PAGE_QUERY_PARAM}={page}"
+            f"&{constants.HISTORY_START_INDEX_QUERY_PARAM}={page * constants.ORDER_HISTORY_PAGE_SIZE}"
+            if page else ""
+        )
         optional_order_filter = (
-            f"&{self.config.constants.ORDER_FILTER_QUERY_PARAM}={quote(order_filter, safe='')}"
+            f"&{constants.ORDER_FILTER_QUERY_PARAM}={quote(order_filter, safe='')}"
             if order_filter else ""
         )
-        next_page: Optional[str] = (
-            "{url}?{query_param}={filter_value}{optional_order_filter}{optional_start_index}"
+        return (
+            "{url}?{query_param}={filter_value}{optional_order_filter}{optional_page}"
         ).format(
-            url=self.config.constants.ORDER_HISTORY_URL,
-            query_param=self.config.constants.HISTORY_FILTER_QUERY_PARAM,
+            url=constants.ORDER_HISTORY_URL,
+            query_param=constants.HISTORY_FILTER_QUERY_PARAM,
             filter_value=filter_value,
             optional_order_filter=optional_order_filter,
-            optional_start_index=optional_start_index
+            optional_page=optional_page
         )
-
-        current_index = int(start_index) if start_index else 0
-
-        return asyncio.run(self._build_orders_async(next_page, keep_paging, full_details, current_index))
 
     @staticmethod
     def _parse_order_count(order_count_tag: Optional[Tag],
@@ -574,13 +694,17 @@ class AmazonOrders:
                                   next_page: Optional[str],
                                   keep_paging: bool,
                                   full_details: bool,
-                                  current_index: int) -> List[Order]:
-        order_tasks = []
+                                  current_index: int,
+                                  limit: Optional[int] = None,
+                                  progress: Optional[Callable[[int], None]] = None
+                                  ) -> Tuple[List[Order], Optional[str], int]:
+        order_tasks: List[Coroutine[Any, Any, Order]] = []
+        orders_before_start_on_page = current_index % self.config.constants.ORDER_HISTORY_PAGE_SIZE
         pages_walked = 0
         header_count = None
         stop_reason = ""
 
-        while next_page:
+        while next_page and (limit is None or len(order_tasks) < limit):
             page_response = self.amazon_session.get(next_page)
             self.amazon_session.check_response(page_response, meta={"index": current_index})
 
@@ -602,16 +726,22 @@ class AmazonOrders:
                     util.select_one(page_response.parsed, self.config.selectors.ORDER_HISTORY_COUNT_SELECTOR),
                     self.config)
 
-            order_tags = self._parse_order_history(page_response.parsed, self.config, current_index)
+            order_tags = self._parse_order_history(page_response.parsed, self.config,
+                                                   current_index - orders_before_start_on_page)
 
             if not order_tags:
+                next_page = None
                 stop_reason = "empty_history"
                 break
 
-            for order_tag in order_tags:
+            for order_tag in order_tags[orders_before_start_on_page:]:
                 order_tasks.append(self._async_wrapper(self._build_order, order_tag, full_details, current_index))
 
                 current_index += 1
+            orders_before_start_on_page = 0
+
+            if progress:
+                progress(len(order_tasks))
 
             next_page = None
             if keep_paging:
@@ -626,12 +756,14 @@ class AmazonOrders:
 
         orders = await asyncio.gather(*order_tasks)
 
-        self.last_history_pull = OrderHistoryPullResult(pages_walked=pages_walked,
-                                                        rows_parsed=len(order_tasks),
-                                                        header_count=header_count,
-                                                        stop_reason=stop_reason)
+        # Kept here and published by get_order_history() alone, so a get_order_history_page() batch leaves
+        # last_history_pull as it was
+        self._history_pull = OrderHistoryPullResult(pages_walked=pages_walked,
+                                                    rows_parsed=len(order_tasks),
+                                                    header_count=header_count,
+                                                    stop_reason=stop_reason)
 
-        return orders
+        return orders, next_page, current_index
 
     def _build_order(self,
                      order_tag: List[Tag],

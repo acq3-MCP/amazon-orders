@@ -430,7 +430,7 @@ class CaptchaForm(AuthForm):
             raise AmazonOrdersError(
                 "CaptchaForm data did not populate, but it's required. "
                 "Check if Amazon changed their Captcha flow, and see "
-                "https://amazon-orders.readthedocs.io/troubleshooting.html#captcha-blocking-login"
+                "https://amazon-orders.readthedocs.io/troubleshooting.html#login-challenges"
             )  # pragma: no cover
 
         # TODO: eliminate the use of find_parent() here
@@ -439,7 +439,7 @@ class CaptchaForm(AuthForm):
             raise AmazonOrdersError(
                 "CaptchaForm parent not found, but it's required. "
                 "Check if Amazon changed their Captcha flow, and see "
-                "https://amazon-orders.readthedocs.io/troubleshooting.html#captcha-blocking-login."
+                "https://amazon-orders.readthedocs.io/troubleshooting.html#login-challenges."
             )  # pragma: no cover
 
         img_tag = form_parent.select_one("img")
@@ -457,7 +457,7 @@ class CaptchaForm(AuthForm):
             raise AmazonOrdersError(
                 f"CaptchaForm <img> or <input name='{self.solution_attr_key}']> tags not found, but one is required. "
                 "Check if Amazon changed their Captcha flow, and see "
-                "https://amazon-orders.readthedocs.io/troubleshooting.html#captcha-blocking-login."
+                "https://amazon-orders.readthedocs.io/troubleshooting.html#login-challenges."
             )  # pragma: no cover
 
         additional_attrs.update({self.solution_attr_key: solution})
@@ -475,7 +475,7 @@ class AcicAuthBlocker(AuthForm):
         if parsed.find(id="aa-challenge-page-captcha-container"):
             raise AmazonOrdersAuthError(
                 "Amazon returned a JavaScript-based authentication challenge. Install the [browser] extra to "
-                "handle this automatically: `pip install amazon-orders[browser]`, then `playwright install chromium`. "
+                "handle this automatically: `pip install amazon-orders[browser]`. "
                 "See https://amazon-orders.readthedocs.io/browser.html for details.")
 
         return False
@@ -498,7 +498,7 @@ class JSAuthBlocker(AuthForm):
         if re.search(self.regex, parsed.text):
             raise AmazonOrdersAuthError(
                 "Amazon returned a JavaScript-based authentication challenge. Install the [browser] extra to "
-                "handle this automatically: `pip install amazon-orders[browser]`, then `playwright install chromium`. "
+                "handle this automatically: `pip install amazon-orders[browser]`. "
                 "See https://amazon-orders.readthedocs.io/browser.html for details.")
 
         return False

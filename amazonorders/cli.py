@@ -7,17 +7,23 @@ import datetime
 import logging
 import os
 import platform
+import sys
 import time
-from typing import Any, Optional
+from typing import Any, Callable, List, Optional
 
 import click
 from click.core import Context
 
 from amazonorders import __version__, util
 from amazonorders.conf import AmazonOrdersConfig
-from amazonorders.contrib.browser.playwright import PlaywrightBrowserLogin
+from amazonorders.contrib.browser.playwright import PlaywrightBrowserLauncher, PlaywrightBrowserLogin
 from amazonorders.digital_orders import AmazonDigitalOrders
-from amazonorders.exception import AmazonOrdersError, AmazonOrdersAuthError, AmazonOrdersAuthRedirectError
+from amazonorders.exception import (
+    AmazonOrdersAuthError,
+    AmazonOrdersAuthRedirectError,
+    AmazonOrdersBrowserNotInstalledError,
+    AmazonOrdersError,
+)
 from amazonorders.gift_cards import AmazonGiftCards
 from amazonorders.orders import AmazonOrders
 from amazonorders.lists import AmazonLists
@@ -51,6 +57,105 @@ class IOClick(IODefault):
 
         return click.prompt(f"--> {msg}", type=type)
 
+    @staticmethod
+    def prompt_for_choice(msg: str,
+                          choices: List[str]) -> str:
+        for number, choice in enumerate(choices, start=1):
+            click.echo(f"{number}: {choice}")
+        click.echo(f"--> {msg} [1]: ", nl=False)
+
+        while True:
+            key = click.getchar()
+            if key in ("\r", "\n"):
+                number = 1
+            elif key.isdigit() and 1 <= int(key) <= len(choices):
+                number = int(key)
+            else:
+                continue
+
+            click.echo(number)
+            return choices[number - 1]
+
+    @staticmethod
+    def print_banner() -> None:
+        click.echo(banner.format(version=__version__), err=True)
+
+    @staticmethod
+    def echo_progress(noun: str) -> Callable[[int], None]:
+        """
+        Build a ``progress`` callback that tells the user, on ``stderr``, how many ``noun`` have been found so far.
+        """
+        def echo(count: int) -> None:
+            click.echo(f"Info: {count} {noun} found so far ...", err=True)
+
+        return echo
+
+    @staticmethod
+    def echo_session_expired() -> None:
+        click.echo("... Amazon redirected to login, which likely means the persisted session is stale. It was logged "
+                   "out, so call the `login` command again, or `login --browser` to log in on Amazon's own page.\n")
+
+
+class CliAuth:
+    def __init__(self,
+                 amazon_session: AmazonSession) -> None:
+        self.amazon_session: AmazonSession = amazon_session
+
+    def authenticate(self,
+                     retries: int = 0) -> None:
+        amazon_session = self.amazon_session
+        try:
+            if amazon_session.auth_cookies_stored():
+                if amazon_session.username or amazon_session.password:
+                    click.echo(
+                        "Info: The given username and password are being ignored because a previous session still "
+                        "exists. To reauthenticate, call the `logout` command first.\n")
+            else:
+                if not amazon_session.username:
+                    amazon_session.username = click.prompt("Username")
+                if not amazon_session.password:
+                    amazon_session.password = click.prompt("Password", hide_input=True)
+                    click.echo("")
+
+            amazon_session.login()
+        except AmazonOrdersAuthError as e:
+            if retries < amazon_session.config.max_auth_retries:
+                if amazon_session.username:
+                    click.secho(str(f"{e}\n"), fg="red")
+                    click.echo(
+                        f"Info: Authenticating '{amazon_session.username}' failed. If using 2FA, wait a minute "
+                        "before retrying with a new OTP.\n")
+
+                amazon_session.password = None
+
+                self.authenticate(retries=retries + 1)
+            else:
+                raise e
+
+    def authenticate_with_browser(self) -> None:
+        browser_login = PlaywrightBrowserLogin(self.amazon_session)
+        try:
+            browser_login.login()
+        except AmazonOrdersBrowserNotInstalledError as e:
+            if not sys.stdin.isatty():
+                raise
+
+            browser_types = (e.meta or {})["browser_types"]
+            if len(browser_types) == 1:
+                click.echo(f"Info: {browser_types[0]} isn't installed.\n")
+                if not click.confirm(f"--> Download {browser_types[0]} now?", default=True):
+                    raise
+                browser_type = browser_types[0]
+            else:
+                click.echo("Info: Chrome isn't installed, so a browser to sign in with needs to be downloaded.\n")
+                browser_type = IOClick.prompt_for_choice("Choose a browser to download", browser_types)
+
+            browser_selected = PlaywrightBrowserLauncher(self.amazon_session.config).install(browser_type)
+            click.echo("")
+            if browser_selected:
+                click.echo(f"Info: Config \"browser\" updated to \"{browser_type}\".\n")
+            browser_login.login()
+
 
 @click.group()
 @click.option("--username", help="An Amazon username.")
@@ -77,13 +182,13 @@ def amazon_orders_cli(ctx: Context,
     to ensure its stability, but as Amazon provides no official API to use, this package may break at any time. Check
     for updates regularly to ensure you always have the latest stable release.
 
-    This package supports the English, .com version of Amazon. Other English Amazon sites can be targeted with
-    --domain, and other languages are supported through language packages.
+    This package reads Amazon's pages in English, on amazon.com and, with --domain, any other Amazon site that offers
+    English. Other languages are supported through language packages.
 
     Documentation can be found at https://amazon-orders.readthedocs.io.
     """
     if ctx.invoked_subcommand != "version":
-        _print_banner()
+        IOClick.print_banner()
 
     ctx.ensure_object(dict)
     for key, value in kwargs.items():
@@ -155,7 +260,7 @@ def history(ctx: Context,
     amazon_session = ctx.obj["amazon_session"]
 
     try:
-        _authenticate(amazon_session)
+        CliAuth(amazon_session).authenticate()
 
         year = kwargs["year"]
         last_30_days = kwargs["last_30_days"]
@@ -183,7 +288,8 @@ def history(ctx: Context,
                 year = datetime.date.today().year
             filter_description = str(year)
 
-        optional_start_index = f", startIndex={start_index}, one page" if single_page else ", all pages"
+        optional_start_index = f", from index {start_index}" if start_index else ""
+        optional_start_index += ", one page" if single_page else ", all pages"
         optional_full_details = ", with full details" if full_details else ""
         click.echo("""-----------------------------------------------------------------------
 Order History for {filter_description}{optional_start_index}{optional_full_details}
@@ -203,7 +309,8 @@ Order History for {filter_description}{optional_start_index}{optional_full_detai
                                                  full_details=full_details,
                                                  keep_paging=not single_page,
                                                  time_filter=time_filter,
-                                                 order_filter=order_filter)
+                                                 order_filter=order_filter,
+                                                 progress=IOClick.echo_progress("Orders"))
         end_time = time.time()
 
         click.echo(config.output_cls(config).format(orders, output))
@@ -212,7 +319,7 @@ Order History for {filter_description}{optional_start_index}{optional_full_detai
             "... {total} Orders parsed in {time} seconds.\n".format(total=len(orders),
                                                                     time=int(end_time - start_time)), err=True)
     except AmazonOrdersAuthRedirectError:
-        _prompt_to_reauth_flow()
+        IOClick.echo_session_expired()
     except AmazonOrdersError as e:
         logger.debug("An error occurred.", exc_info=True)
         ctx.fail(str(e))
@@ -232,7 +339,7 @@ def order(ctx: Context,
     amazon_session = ctx.obj["amazon_session"]
 
     try:
-        _authenticate(amazon_session)
+        CliAuth(amazon_session).authenticate()
 
         config = ctx.obj["conf"]
         amazon_orders = AmazonOrders(amazon_session,
@@ -244,7 +351,7 @@ def order(ctx: Context,
 
         click.echo(config.output_cls(config).format([o], output))
     except AmazonOrdersAuthRedirectError:
-        _prompt_to_reauth_flow()
+        IOClick.echo_session_expired()
     except AmazonOrdersError as e:
         logger.debug("An error occurred.", exc_info=True)
         ctx.fail(str(e))
@@ -261,7 +368,7 @@ def invoice(ctx: Context,
     amazon_session = ctx.obj["amazon_session"]
 
     try:
-        _authenticate(amazon_session)
+        CliAuth(amazon_session).authenticate()
 
         config = ctx.obj["conf"]
         amazon_orders = AmazonOrders(amazon_session,
@@ -271,7 +378,7 @@ def invoice(ctx: Context,
 
         click.echo(invoice_response.response.text)
     except AmazonOrdersAuthRedirectError:
-        _prompt_to_reauth_flow()
+        IOClick.echo_session_expired()
     except AmazonOrdersError as e:
         logger.debug("An error occurred.", exc_info=True)
         ctx.fail(str(e))
@@ -291,7 +398,7 @@ def order_transactions(ctx: Context,
     amazon_session = ctx.obj["amazon_session"]
 
     try:
-        _authenticate(amazon_session)
+        CliAuth(amazon_session).authenticate()
 
         config = ctx.obj["conf"]
         amazon_transactions = AmazonTransactions(amazon_session,
@@ -309,7 +416,7 @@ def order_transactions(ctx: Context,
             "... {total} Transactions parsed in {time} seconds.\n".format(total=len(order_transaction_list),
                                                                           time=int(end_time - start_time)), err=True)
     except AmazonOrdersAuthRedirectError:
-        _prompt_to_reauth_flow()
+        IOClick.echo_session_expired()
     except AmazonOrdersError as e:
         logger.debug("An error occurred.", exc_info=True)
         ctx.fail(str(e))
@@ -328,7 +435,7 @@ def transactions(ctx: Context, **kwargs: Any) -> None:
     amazon_session = ctx.obj["amazon_session"]
 
     try:
-        _authenticate(amazon_session)
+        CliAuth(amazon_session).authenticate()
 
         days = kwargs["days"]
         output = kwargs["output"]
@@ -345,7 +452,8 @@ Transaction History for {days} days
                                                  config=config)
 
         start_time = time.time()
-        transaction_list = amazon_transactions.get_transactions(days=days)
+        transaction_list = amazon_transactions.get_transactions(days=days,
+                                                                progress=IOClick.echo_progress("Transactions"))
         end_time = time.time()
 
         click.echo(config.output_cls(config).format(transaction_list, output))
@@ -354,7 +462,7 @@ Transaction History for {days} days
             "... {total} Transactions parsed in {time} seconds.\n".format(total=len(transaction_list),
                                                                           time=int(end_time - start_time)), err=True)
     except AmazonOrdersAuthRedirectError:
-        _prompt_to_reauth_flow()
+        IOClick.echo_session_expired()
     except AmazonOrdersError as e:
         logger.debug("An error occurred.", exc_info=True)
         ctx.fail(str(e))
@@ -379,7 +487,7 @@ def digital_orders(ctx: Context, **kwargs: Any) -> None:
         ctx.fail("Only one of --year or --all may be used at a time.")
 
     try:
-        _authenticate(amazon_session)
+        CliAuth(amazon_session).authenticate()
 
         config = ctx.obj["conf"]
         amazon_digital_orders = AmazonDigitalOrders(amazon_session,
@@ -401,7 +509,7 @@ def digital_orders(ctx: Context, **kwargs: Any) -> None:
                                                                             time=int(end_time - start_time)),
             err=True)
     except AmazonOrdersAuthRedirectError:
-        _prompt_to_reauth_flow()
+        IOClick.echo_session_expired()
     except AmazonOrdersError as e:
         logger.debug("An error occurred.", exc_info=True)
         ctx.fail(str(e))
@@ -416,7 +524,7 @@ def gift_card_balance(ctx: Context) -> None:
     amazon_session = ctx.obj["amazon_session"]
 
     try:
-        _authenticate(amazon_session)
+        CliAuth(amazon_session).authenticate()
 
         config = ctx.obj["conf"]
         amazon_gift_cards = AmazonGiftCards(amazon_session,
@@ -426,7 +534,7 @@ def gift_card_balance(ctx: Context) -> None:
 
         click.echo(f"Gift Card Balance: {config.constants.format_currency(balance)}")
     except AmazonOrdersAuthRedirectError:
-        _prompt_to_reauth_flow()
+        IOClick.echo_session_expired()
     except AmazonOrdersError as e:
         logger.debug("An error occurred.", exc_info=True)
         ctx.fail(str(e))
@@ -445,7 +553,7 @@ def gift_card_activity(ctx: Context, **kwargs: Any) -> None:
     amazon_session = ctx.obj["amazon_session"]
 
     try:
-        _authenticate(amazon_session)
+        CliAuth(amazon_session).authenticate()
 
         days = kwargs["days"]
         output = kwargs["output"]
@@ -462,7 +570,8 @@ Gift Card Activity for {days} days
                                             config=config)
 
         start_time = time.time()
-        activity = amazon_gift_cards.get_gift_card_activity(days=days)
+        activity = amazon_gift_cards.get_gift_card_activity(
+            days=days, progress=IOClick.echo_progress("Gift Card activity entries"))
         end_time = time.time()
 
         click.echo(config.output_cls(config).format(activity, output))
@@ -471,7 +580,7 @@ Gift Card Activity for {days} days
             "... {total} Gift Card activity entries parsed in {time} seconds.\n".format(
                 total=len(activity), time=int(end_time - start_time)), err=True)
     except AmazonOrdersAuthRedirectError:
-        _prompt_to_reauth_flow()
+        IOClick.echo_session_expired()
     except AmazonOrdersError as e:
         logger.debug("An error occurred.", exc_info=True)
         ctx.fail(str(e))
@@ -488,7 +597,7 @@ def rewards_balance(ctx: Context, **kwargs: Any) -> None:
     amazon_session = ctx.obj["amazon_session"]
 
     try:
-        _authenticate(amazon_session)
+        CliAuth(amazon_session).authenticate()
 
         config = ctx.obj["conf"]
         amazon_rewards = AmazonRewards(amazon_session,
@@ -496,7 +605,7 @@ def rewards_balance(ctx: Context, **kwargs: Any) -> None:
 
         click.echo(config.output_cls(config).format(amazon_rewards.get_rewards_balances(), kwargs["output"]))
     except AmazonOrdersAuthRedirectError:
-        _prompt_to_reauth_flow()
+        IOClick.echo_session_expired()
     except AmazonOrdersError as e:
         logger.debug("An error occurred.", exc_info=True)
         ctx.fail(str(e))
@@ -514,7 +623,7 @@ def prime_payments(ctx: Context, **kwargs: Any) -> None:
     amazon_session = ctx.obj["amazon_session"]
 
     try:
-        _authenticate(amazon_session)
+        CliAuth(amazon_session).authenticate()
 
         config = ctx.obj["conf"]
         amazon_prime = AmazonPrime(amazon_session,
@@ -526,7 +635,7 @@ def prime_payments(ctx: Context, **kwargs: Any) -> None:
 
         click.echo(f"... {len(payments)} Prime payments parsed.\n", err=True)
     except AmazonOrdersAuthRedirectError:
-        _prompt_to_reauth_flow()
+        IOClick.echo_session_expired()
     except AmazonOrdersError as e:
         logger.debug("An error occurred.", exc_info=True)
         ctx.fail(str(e))
@@ -544,7 +653,7 @@ def wish_lists(ctx: Context, **kwargs: Any) -> None:
     amazon_session = ctx.obj["amazon_session"]
 
     try:
-        _authenticate(amazon_session)
+        CliAuth(amazon_session).authenticate()
 
         config = ctx.obj["conf"]
         amazon_lists = AmazonLists(amazon_session,
@@ -556,7 +665,7 @@ def wish_lists(ctx: Context, **kwargs: Any) -> None:
 
         click.echo(f"... {len(lists)} Lists parsed.\n", err=True)
     except AmazonOrdersAuthRedirectError:
-        _prompt_to_reauth_flow()
+        IOClick.echo_session_expired()
     except AmazonOrdersError as e:
         logger.debug("An error occurred.", exc_info=True)
         ctx.fail(str(e))
@@ -576,7 +685,7 @@ def wish_list(ctx: Context, list_id: str, **kwargs: Any) -> None:
     amazon_session = ctx.obj["amazon_session"]
 
     try:
-        _authenticate(amazon_session)
+        CliAuth(amazon_session).authenticate()
 
         config = ctx.obj["conf"]
         amazon_lists = AmazonLists(amazon_session,
@@ -588,7 +697,7 @@ def wish_list(ctx: Context, list_id: str, **kwargs: Any) -> None:
 
         click.echo(f"... {len(fetched_list.items or [])} List items parsed.\n", err=True)
     except AmazonOrdersAuthRedirectError:
-        _prompt_to_reauth_flow()
+        IOClick.echo_session_expired()
     except AmazonOrdersError as e:
         logger.debug("An error occurred.", exc_info=True)
         ctx.fail(str(e))
@@ -610,11 +719,11 @@ def check_session(ctx: Context) -> None:
 @amazon_orders_cli.command()
 @click.pass_context
 @click.option("--browser", is_flag=True, default=False,
-              help="Sign in with a browser window, so credentials are entered on Amazon's own page and never reach "
-                   "amazon-orders. Requires the browser extra.")
+              help="Sign in with a browser window, so amazon-orders never needs to store your credentials. "
+                   "Requires the browser extra.")
 def login(ctx: Context, **kwargs: Any) -> None:
     """
-    Login to establish an Amazon session and cookies.
+    Log in to establish an Amazon session and cookies.
     """
     amazon_session = ctx.obj["amazon_session"]
 
@@ -624,9 +733,9 @@ def login(ctx: Context, **kwargs: Any) -> None:
     else:
         try:
             if kwargs["browser"]:
-                PlaywrightBrowserLogin(amazon_session).login()
+                CliAuth(amazon_session).authenticate_with_browser()
             else:
-                _authenticate(amazon_session)
+                CliAuth(amazon_session).authenticate()
         except AmazonOrdersError as e:
             logger.debug("An error occurred.", exc_info=True)
             ctx.fail(str(e))
@@ -638,7 +747,7 @@ def login(ctx: Context, **kwargs: Any) -> None:
 @click.pass_context
 def logout(ctx: Context) -> None:
     """
-    Logout of existing Amazon sessions and clear cookies.
+    Log out of existing Amazon sessions and clear cookies.
     """
     amazon_session = ctx.obj["amazon_session"]
     amazon_session.logout()
@@ -677,46 +786,6 @@ def version(ctx: Context) -> None:
     """
     click.echo(f"amazon-orders/{__version__} Python/{platform.python_version()}")
     ctx.exit(0)
-
-
-def _print_banner() -> None:
-    click.echo(banner.format(version=__version__), err=True)
-
-
-def _authenticate(amazon_session: AmazonSession,
-                  retries: int = 0) -> None:
-    try:
-        if amazon_session.auth_cookies_stored():
-            if amazon_session.username or amazon_session.password:
-                click.echo(
-                    "Info: The given username and password are being ignored because a previous session still exists. "
-                    "To reauthenticate, call the `logout` command first.\n")
-        else:
-            if not amazon_session.username:
-                amazon_session.username = click.prompt("Username")
-            if not amazon_session.password:
-                amazon_session.password = click.prompt("Password", hide_input=True)
-                click.echo("")
-
-        amazon_session.login()
-    except AmazonOrdersAuthError as e:
-        if retries < amazon_session.config.max_auth_retries:
-            if amazon_session.username:
-                click.secho(str(f"{e}\n"), fg="red")
-                click.echo(
-                    f"Info: Authenticating '{amazon_session.username}' failed. If using 2FA, wait a minute before "
-                    "retrying with a new OTP.\n")
-
-            amazon_session.password = None
-
-            _authenticate(amazon_session, retries=retries + 1)
-        else:
-            raise e
-
-
-def _prompt_to_reauth_flow() -> None:
-    click.echo("... Amazon redirected to login, which likely means the persisted session is stale. It was logged "
-               "out, so try running the command again.\n")
 
 
 if __name__ == "__main__":

@@ -2,12 +2,13 @@ __copyright__ = "Copyright (c) 2024-2025 Alex Laird"
 __license__ = "MIT"
 
 import datetime
+import json
 import os
 from unittest.mock import patch
 
 import responses
 from bs4 import BeautifulSoup
-from responses.matchers import json_params_matcher
+from responses.matchers import header_matcher, json_params_matcher
 from responses.registries import OrderedRegistry
 
 from amazonorders.conf import AmazonOrdersConfig
@@ -205,6 +206,66 @@ class TestTransactions(UnitTestCase):
         # THEN
         self.assertEqual([], transactions)
 
+    def test_parse_transactions_embedded_data(self):
+        # GIVEN
+        with open(os.path.join(self.RESOURCES_DIR, "transactions", "transactions-nextjs.html"), "r",
+                  encoding="utf-8") as f:
+            parsed = BeautifulSoup(f.read(), self.test_config.bs4_parser)
+
+        # WHEN
+        transactions, next_page_data = TransactionsPage(self.test_config).parse_page(parsed)
+
+        # THEN
+        self.assertEqual(20, len(transactions))
+        self.assertEqual(self.given_embedded_next_page_data(), next_page_data)
+        transaction = transactions[0]
+        self.assertEqual(datetime.date(2026, 3, 16), transaction.completed_date)
+        self.assertEqual("Visa Card ****7986", transaction.payment_method)
+        self.assertEqual("7986", transaction.payment_method_last_4)
+        self.assertEqual(-45.68, transaction.grand_total)
+        self.assertEqual("112-2951294-1503648", transaction.order_number)
+        self.assertEqual("AMZN Mktp US", transaction.seller)
+        self.assertEqual(4, len([t for t in transactions if t.is_refund]))
+        self.assertIsNone(transactions[13].seller)
+
+    @responses.activate
+    def test_get_transactions_embedded_data_next_page(self):
+        # GIVEN
+        next_page_data = self.given_embedded_next_page_data()
+        responses.add(responses.POST, self.test_config.constants.TRANSACTION_DATA_URL,
+                      body=self.given_embedded_next_page_body(), status=200,
+                      match=[json_params_matcher({"type": "GetTransactions",
+                                                  "locale": "en_US",
+                                                  "exclusiveStartKey": "REDACTED",
+                                                  "widgetName": "ViewTransactions"}),
+                             header_matcher({"x-amzn-upx-token": "REDACTED",
+                                             "Accept": "application/json"})])
+
+        # WHEN
+        transactions, next_page_data = TransactionsPage(self.test_config).get_page(
+            self.amazon_session, self.test_config.constants.TRANSACTION_HISTORY_URL, next_page_data)
+
+        # THEN
+        self.assertEqual(20, len(transactions))
+        self.assertEqual(self.given_embedded_next_page_data(), next_page_data)
+        self.assertEqual(datetime.date(2026, 2, 14), transactions[0].completed_date)
+
+    @responses.activate
+    def test_get_transactions_embedded_data_last_page(self):
+        # GIVEN
+        body = json.loads(self.given_embedded_next_page_body())
+        del body["displayResponse"]["lastEvaluatedKey"]
+        responses.add(responses.POST, self.test_config.constants.TRANSACTION_DATA_URL, json=body, status=200)
+
+        # WHEN
+        transactions, next_page_data = TransactionsPage(self.test_config).get_page(
+            self.amazon_session, self.test_config.constants.TRANSACTION_HISTORY_URL,
+            self.given_embedded_next_page_data())
+
+        # THEN
+        self.assertEqual(20, len(transactions))
+        self.assertIsNone(next_page_data)
+
     def test_parse_transactions_unparseable(self):
         # WHEN
         with self.assertRaises(AmazonOrdersError) as cm:
@@ -286,30 +347,13 @@ class TestTransactions(UnitTestCase):
         self.assertIsNone(transaction.seller)
         self.assertEqual(1, resp.call_count)
 
-    @responses.activate
+    @responses.activate(registry=OrderedRegistry)
     @patch("amazonorders.transactions.datetime", wraps=datetime)
     def test_get_transactions_paginated(self, mock_today):
         # GIVEN
         mock_today.date.today.return_value = datetime.date(2025, 5, 27)
         self.amazon_session.is_authenticated = True
-        with open(os.path.join(self.RESOURCES_DIR, "transactions", "transactions-with-next-page.html"),
-                  "r",
-                  encoding="utf-8") as f:
-            resp1 = responses.add(
-                responses.POST,
-                f"{self.test_config.constants.TRANSACTION_HISTORY_URL}",
-                body=f.read(),
-                status=200,
-            )
-        with open(os.path.join(self.RESOURCES_DIR, "transactions", "transactions-in-progress.html"),
-                  "r",
-                  encoding="utf-8") as f:
-            resp2 = responses.add(
-                responses.POST,
-                f"{self.test_config.constants.TRANSACTION_HISTORY_URL}",
-                body=f.read(),
-                status=200,
-            )
+        resp1, resp2 = self.given_two_transaction_pages_exist()
 
         # WHEN
         transactions = self.amazon_transactions.get_transactions()
@@ -318,6 +362,98 @@ class TestTransactions(UnitTestCase):
         self.assertEqual(40, len(transactions))
         self.assertEqual(1, resp1.call_count)
         self.assertEqual(1, resp2.call_count)
+
+    @responses.activate(registry=OrderedRegistry)
+    @patch("amazonorders.transactions.datetime", wraps=datetime)
+    def test_get_transactions_page_limit_stops_at_page_boundary(self, mock_today):
+        # GIVEN
+        mock_today.date.today.return_value = datetime.date(2025, 5, 27)
+        self.amazon_session.is_authenticated = True
+        resp1, resp2 = self.given_two_transaction_pages_exist()
+
+        # WHEN
+        page = self.amazon_transactions.get_transactions_page(limit=5)
+
+        # THEN
+        self.assertEqual(20, len(page.items))
+        self.assertTrue(page.has_more)
+        self.assertEqual("2024-05-27", page.cursor["min_date"])
+        self.assertIsNone(page.cursor["order_id"])
+        self.assertIsNotNone(page.cursor["next_page_data"])
+        self.assertEqual(1, resp1.call_count)
+        self.assertEqual(0, resp2.call_count)
+
+    @responses.activate(registry=OrderedRegistry)
+    @patch("amazonorders.transactions.datetime", wraps=datetime)
+    def test_get_transactions_page_cursor_is_json_safe_and_resumes(self, mock_today):
+        # GIVEN
+        mock_today.date.today.return_value = datetime.date(2025, 5, 27)
+        self.amazon_session.is_authenticated = True
+        _, resp2 = self.given_two_transaction_pages_exist()
+        first_page = self.amazon_transactions.get_transactions_page(limit=5)
+        cursor = json.loads(json.dumps(first_page.cursor))
+
+        # WHEN
+        page = self.amazon_transactions.get_transactions_page(cursor=cursor)
+
+        # THEN
+        self.assertEqual(20, len(page.items))
+        self.assertFalse(page.has_more)
+        self.assertIsNone(page.cursor)
+        self.assertEqual(1, resp2.call_count)
+
+    @responses.activate(registry=OrderedRegistry)
+    @patch("amazonorders.transactions.datetime", wraps=datetime)
+    def test_get_transactions_page_without_limit_fetches_every_page(self, mock_today):
+        # GIVEN
+        mock_today.date.today.return_value = datetime.date(2025, 5, 27)
+        self.amazon_session.is_authenticated = True
+        self.given_two_transaction_pages_exist()
+
+        # WHEN
+        page = self.amazon_transactions.get_transactions_page()
+
+        # THEN
+        self.assertEqual(40, len(page.items))
+        self.assertIsNone(page.cursor)
+
+    @responses.activate(registry=OrderedRegistry)
+    @patch("amazonorders.transactions.datetime", wraps=datetime)
+    def test_get_transactions_reports_progress_per_page(self, mock_today):
+        # GIVEN
+        mock_today.date.today.return_value = datetime.date(2025, 5, 27)
+        self.amazon_session.is_authenticated = True
+        self.given_two_transaction_pages_exist()
+        counts = []
+
+        # WHEN
+        self.amazon_transactions.get_transactions(progress=counts.append)
+
+        # THEN
+        self.assertEqual([20, 40], counts)
+
+    @responses.activate(registry=OrderedRegistry)
+    @patch("amazonorders.transactions.datetime", wraps=datetime)
+    def test_get_transactions_page_reports_progress_per_batch(self, mock_today):
+        # GIVEN
+        mock_today.date.today.return_value = datetime.date(2025, 5, 27)
+        self.amazon_session.is_authenticated = True
+        self.given_two_transaction_pages_exist()
+        counts = []
+
+        # WHEN
+        self.amazon_transactions.get_transactions_page(limit=5, progress=counts.append)
+
+        # THEN
+        self.assertEqual([20], counts)
+
+    def test_get_transactions_page_unauthenticated(self):
+        # WHEN
+        with self.assertRaises(AmazonOrdersError) as cm:
+            self.amazon_transactions.get_transactions_page()
+
+        # THEN
+        self.assertEqual("Call AmazonSession.login() to authenticate first.", str(cm.exception))
 
     @responses.activate(registry=OrderedRegistry)
     @patch("amazonorders.transactions.datetime", wraps=datetime)
@@ -499,6 +635,25 @@ class TestTransactions(UnitTestCase):
         # WHEN/THEN
         with self.assertRaises(AmazonOrdersError):
             AmazonTransactions.parse_transactions(html, self.test_config)
+
+    def given_two_transaction_pages_exist(self):
+        responses_added = []
+        for html_file in ["transactions-with-next-page.html", "transactions-in-progress.html"]:
+            with open(os.path.join(self.RESOURCES_DIR, "transactions", html_file), "r", encoding="utf-8") as f:
+                responses_added.append(responses.add(responses.POST,
+                                                     self.test_config.constants.TRANSACTION_HISTORY_URL,
+                                                     body=f.read(),
+                                                     status=200))
+        return responses_added
+
+    def given_embedded_next_page_data(self):
+        return {"exclusiveStartKey": "REDACTED", "token": "REDACTED", "locale": "en_US",
+                "widgetName": "ViewTransactions"}
+
+    def given_embedded_next_page_body(self):
+        with open(os.path.join(self.RESOURCES_DIR, "transactions", "transactions-nextjs-next-page.json"), "r",
+                  encoding="utf-8") as f:
+            return f.read()
 
     def given_transactions_html_with_unparseable_date(self):
         with open(os.path.join(self.RESOURCES_DIR, "transactions", "get-transactions-snippet.html"), "r",

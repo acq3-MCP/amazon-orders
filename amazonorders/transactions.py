@@ -2,8 +2,9 @@ __copyright__ = "Copyright (c) 2024-2025 Alex Laird"
 __license__ = "MIT"
 
 import datetime
+import json
 import logging
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Callable, Dict, List, Optional, Tuple, Any
 
 from bs4 import BeautifulSoup, Tag
 
@@ -11,6 +12,7 @@ from amazonorders import util
 from amazonorders.conf import AmazonOrdersConfig
 from amazonorders.entity.transaction import Transaction
 from amazonorders.exception import AmazonOrdersEntityError, AmazonOrdersError
+from amazonorders.paging import PagedResults
 from amazonorders.session import AmazonSession
 
 logger = logging.getLogger(__name__)
@@ -53,6 +55,15 @@ class TransactionsPage:
         :return: The page's Transactions, and the data to request the next page with (``None`` if this is the
             last page).
         """
+        if next_page_data and "exclusiveStartKey" in next_page_data:
+            return self._get_data_page(amazon_session, next_page_data)
+
+        return self._get_form_page(amazon_session, url, next_page_data)
+
+    def _get_form_page(self,
+                       amazon_session: AmazonSession,
+                       url: str,
+                       next_page_data: Optional[Dict[str, Any]]) -> Tuple[List[Transaction], Optional[Dict[str, Any]]]:
         page_response = amazon_session.post(url, data=next_page_data)
         amazon_session.check_response(page_response, meta=next_page_data)
 
@@ -71,6 +82,10 @@ class TransactionsPage:
         form_tag = util.select_one(parsed, self.config.selectors.TRANSACTION_HISTORY_FORM_SELECTOR)
 
         if not form_tag:
+            data_tag = util.select_one(parsed, self.config.selectors.TRANSACTION_HISTORY_DATA_SELECTOR)
+            if data_tag:
+                return self._parse_transaction_data_tag(data_tag)
+
             container_tag = util.select_one(parsed, self.config.selectors.TRANSACTION_HISTORY_CONTAINER_SELECTOR)
             if container_tag and self.config.selectors.TRANSACTION_HISTORY_EMPTY_TEXT in container_tag.text:
                 return [], None
@@ -78,6 +93,95 @@ class TransactionsPage:
             raise AmazonOrdersError("Could not parse Transaction history. Check if Amazon changed the HTML.")
 
         return self._parse_transaction_form_tag(form_tag)
+
+    def _parse_transaction_data_tag(self,
+                                    data_tag: Tag) -> Tuple[List[Transaction], Optional[Dict[str, Any]]]:
+        try:
+            page_props = json.loads(data_tag.string or "")["props"]["pageProps"]
+            state = page_props["state"]["transactionResponseState"]
+            transaction_list = state["visibleTransactionResponse"]["transactionList"]
+            next_page_data = None
+            if state.get("hasMore") and state.get("lastEvaluatedPageKey"):
+                next_page_data = {
+                    "exclusiveStartKey": state["lastEvaluatedPageKey"],
+                    "token": page_props["token"],
+                    "locale": page_props["request"]["locale"],
+                    "widgetName": page_props["request"]["widgetName"],
+                }
+        except (KeyError, TypeError, ValueError) as e:
+            raise AmazonOrdersError("Could not parse Transaction history. Check if Amazon changed the HTML.") from e
+
+        return self._parse_transaction_list(transaction_list), next_page_data
+
+    def _get_data_page(self,
+                       amazon_session: AmazonSession,
+                       next_page_data: Dict[str, Any]) -> Tuple[List[Transaction], Optional[Dict[str, Any]]]:
+        constants = self.config.constants
+        page_response = amazon_session.post(
+            constants.TRANSACTION_DATA_URL,
+            json={
+                "type": "GetTransactions",
+                "locale": next_page_data["locale"],
+                "exclusiveStartKey": next_page_data["exclusiveStartKey"],
+                "widgetName": next_page_data["widgetName"],
+            },
+            headers={
+                "Accept": "application/json",
+                "Referer": constants.TRANSACTION_HISTORY_URL,
+                "x-amzn-upx-token": next_page_data["token"],
+            })
+        amazon_session.check_response(page_response, meta=next_page_data)
+
+        try:
+            display_response = page_response.response.json()["displayResponse"]
+            transaction_list = display_response["transactionsList"]
+        except (KeyError, TypeError, ValueError) as e:
+            raise AmazonOrdersError("Could not parse Transaction history. Check if Amazon changed the HTML.",
+                                    meta=next_page_data) from e
+
+        transactions = self._parse_transaction_list(transaction_list)
+        last_key = display_response.get("lastEvaluatedKey")
+
+        return transactions, {**next_page_data, "exclusiveStartKey": last_key} if last_key and transactions else None
+
+    def _parse_transaction_list(self,
+                                transaction_list: List[Dict[str, Any]]) -> List[Transaction]:
+        config = self.config
+        transactions = []
+        for transaction_data in transaction_list:
+            date_str = transaction_data.get("formattedDate")
+            total_str = transaction_data.get("formattedAmount")
+            date = config.constants.parse_date(date_str)
+            grand_total = config.constants.parse_currency(total_str) if total_str else None
+            if date is None or grand_total is None:
+                err_msg = (f"Transaction date {date_str!r} or total {total_str!r} could not be parsed, but both are "
+                           f"required. Check if Amazon changed the HTML")
+                if not config.warn_on_missing_required_field:
+                    raise AmazonOrdersEntityError(f"{err_msg} or set warn_on_missing_required_field=True in config.")
+
+                logger.warning(f"{err_msg}.")
+                continue
+
+            order_data: Dict[str, Any] = next(iter(transaction_data.get("orderData") or []), {})
+            payment_method_data = transaction_data.get("paymentMethodDisplayStringData") or {}
+            payment_method_name = payment_method_data.get("paymentMethodName")
+            last_digits = (payment_method_data.get("paymentMethodNumber") or {}).get("lastDigits")
+            payment_method = f"{payment_method_name} ****{last_digits}" if payment_method_name and last_digits \
+                else payment_method_name
+            order_number = config.constants.parse_order_number(order_data.get("orderDisplayString") or "")
+            seller = transaction_data.get("statementDescriptor")
+
+            transactions.append(config.transaction_cls.from_fields(
+                config,
+                date,
+                grand_total,
+                payment_method=payment_method,
+                payment_method_last_4=last_digits,
+                order_number=order_number,
+                order_details_link=order_data.get("orderDetailsUrl"),
+                seller=None if seller == order_number else seller))
+
+        return transactions
 
     def _parse_transaction_form_tag(self,
                                     form_tag: Tag) -> Tuple[List[Transaction], Optional[Dict[str, Any]]]:
@@ -174,7 +278,8 @@ class AmazonTransactions:
                          days: int = 365,
                          next_page_data: Optional[Dict[str, Any]] = None,
                          keep_paging: bool = True,
-                         order_id: Optional[str] = None) -> List[Transaction]:
+                         order_id: Optional[str] = None,
+                         progress: Optional[Callable[[int], None]] = None) -> List[Transaction]:
         """
         Get Amazon Transaction history for a given number of days, or for a single Order.
 
@@ -184,33 +289,94 @@ class AmazonTransactions:
         :param keep_paging: ``False`` if only one page should be fetched.
         :param order_id: If given, only Transactions for this Amazon Order ID are returned, scoped
             server-side via Amazon's ``transactionTag`` filter (the ``days`` window does not apply).
+        :param progress: Called after each page of history is fetched, with the number of Transactions found so far.
         :return: A list of the requested Transactions.
         """
         if not self.amazon_session.is_authenticated:
             raise AmazonOrdersError("Call AmazonSession.login() to authenticate first.")
 
+        min_date = None if order_id else datetime.date.today() - datetime.timedelta(days=days)
+        transactions, _ = self._collect_transactions(order_id, min_date, next_page_data, keep_paging, None, progress)
+
+        return transactions
+
+    def get_transactions_page(self,
+                              days: int = 365,
+                              order_id: Optional[str] = None,
+                              limit: Optional[int] = None,
+                              cursor: Optional[Dict[str, Any]] = None,
+                              progress: Optional[Callable[[int], None]] = None) -> PagedResults[Transaction]:
+        """
+        Get a batch of Amazon Transaction history for a given number of days, or for a single Order, with a cursor
+        to fetch the next batch.
+
+        :param days: The number of days worth of Transactions to get. Ignored when ``order_id`` or ``cursor`` is
+            given.
+        :param order_id: If given, only Transactions for this Amazon Order ID are returned, as in
+            :func:`get_transactions`. Ignored when ``cursor`` is given.
+        :param limit: Stop fetching Transaction pages once at least this many Transactions are collected. Whole pages
+            are fetched, so the batch can hold up to a page more than ``limit``. ``None`` fetches every page.
+        :param cursor: The :attr:`~amazonorders.paging.PagedResults.cursor` of the previous batch, to fetch the
+            next one. The ``days`` window or ``order_id`` it was fetched with carries over.
+        :param progress: Called after each page of history is fetched, with the number of Transactions found so far
+            in this batch.
+        :return: The batch of Transactions, and the cursor for the next one.
+        """
+        if not self.amazon_session.is_authenticated:
+            raise AmazonOrdersError("Call AmazonSession.login() to authenticate first.")
+
+        next_page_data = None
+        if cursor:
+            order_id = cursor["order_id"]
+            min_date = datetime.date.fromisoformat(cursor["min_date"]) if cursor["min_date"] else None
+            next_page_data = cursor["next_page_data"]
+        else:
+            min_date = None if order_id else datetime.date.today() - datetime.timedelta(days=days)
+
+        transactions, next_page_data = self._collect_transactions(order_id, min_date, next_page_data, True, limit,
+                                                                  progress)
+        next_cursor = {
+            "next_page_data": next_page_data,
+            "min_date": min_date.isoformat() if min_date else None,
+            "order_id": order_id,
+        } if next_page_data else None
+
+        return PagedResults(transactions, next_cursor)
+
+    def _collect_transactions(self,
+                              order_id: Optional[str],
+                              min_date: Optional[datetime.date],
+                              next_page_data: Optional[Dict[str, Any]],
+                              keep_paging: bool,
+                              limit: Optional[int],
+                              progress: Optional[Callable[[int], None]]
+                              ) -> Tuple[List[Transaction], Optional[Dict[str, Any]]]:
+        """
+        Fetch Transaction pages until the history ends, a Transaction is older than ``min_date``, ``keep_paging``
+        is ``False`` after the first page, or at least ``limit`` Transactions are collected.
+
+        :return: The Transactions, and the data to request the next page with (``None`` if there is none).
+        """
         url = self.config.constants.TRANSACTION_HISTORY_URL
         if order_id:
             url = f"{url}?transactionTag={order_id}"
-        else:
-            min_date = datetime.date.today() - datetime.timedelta(days=days)
 
         transactions_page = self.config.transactions_page_cls(self.config)
         transactions: List[Transaction] = []
         first_page = True
-        while first_page or keep_paging:
+        while first_page or (keep_paging and next_page_data and (limit is None or len(transactions) < limit)):
             first_page = False
 
             loaded_transactions, next_page_data = transactions_page.get_page(self.amazon_session, url, next_page_data)
 
             for transaction in loaded_transactions:
-                if order_id or transaction.completed_date >= min_date:
+                if min_date is None or transaction.completed_date >= min_date:
                     transactions.append(transaction)
                 else:
                     next_page_data = None
                     break
 
-            if not next_page_data:
-                keep_paging = False
+            if progress:
+                progress(len(transactions))
 
-        return transactions
+        return transactions, next_page_data
