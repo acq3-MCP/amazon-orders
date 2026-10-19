@@ -52,6 +52,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - `digital-orders --year --all` now fails explicitly instead of silently ignoring `--year`.
 - `Parsable.safe_parse()` now also degrades a field on `TypeError` and `RecursionError`, which is what page-embedded JSON produces when it is valid but not the expected shape (the Order address fallback wraps it in `BeautifulSoup`) or nested deeply enough to exhaust the interpreter's stack (`json.loads` raises `RecursionError`, a `RuntimeError`, not a `ValueError`). Previously either aborted the whole entity instead of degrading one field. Required-field errors still propagate.
 - `AmazonRewards` now raises `AmazonOrdersError` rather than a bare `RecursionError` on deeply nested page data.
+- `OutputFormatter.order_text()` and `transaction_text()` now print a Grand Total of $0.00 (an Order paid entirely with points or Gift Card balance) instead of omitting the line as if it had failed to parse (alexdlaird/amazon-orders#152). The breakdown lines (Subtotal through Refund Total) still hide zero values; `json`, `yaml`, and `csv` output carry them exactly.
 
 ## [4.9.0](https://github.com/alexdlaird/amazon-orders/compare/4.8.1...4.9.0) - 2026-10-14
 
