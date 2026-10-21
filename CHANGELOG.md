@@ -4,7 +4,8 @@ All notable changes to this project will be documented in this file.
 
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased](https://github.com/alexdlaird/amazon-orders/compare/4.9.6...HEAD)
+## [Unreleased](https://github.com/alexdlaird/amazon-orders/compare/4.10.0...HEAD)
+
 
 ### Added
 
@@ -29,6 +30,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- Synced with upstream 4.10.0. Each Amazon site keeps its own session: with the default `cookie_jar_path`, `amazon.com`'s stays in `cookies.json` and every other site's goes beside it (e.g. `cookies.amazon.de.json`), read once from the shared jar until it is saved; a `cookie_jar_path` that isn't the default is used as-is. Akamai's interstitial challenge is detected by its markup, and `util.has_display()` comes from upstream. `Parsable.safe_parse()`'s degrading of `TypeError` and `RecursionError` is upstream's now, so `entity/parsable.py` is upstream's file again.
 - Synced with upstream 4.9.6. Prime is upstream's now (alexdlaird/amazon-orders#144): `AmazonPrime`, `PrimePayment`, their selectors, the `prime-payments` command and its text renderer replace the fork's. `PrimePayment.grand_total` is the field, and `total` stays for one release as a deprecated alias. `get_prime_payments()` raises `AmazonOrdersUnavailableError` on Membership Central's error page. The fork keeps `parse_prime_payments_page()` and `PrimePaymentsPageResult` on top of upstream's parsing, with the same page types; a card that fails to parse no longer carries `partial_payments` in the error's `meta`. Order history builds share one thread pool per batch, so `thread_pool_size` bounds them, and queued builds are cancelled when one fails (alexdlaird/amazon-orders#157); `last_history_pull` is still recorded for a history with no Orders.
 - Synced with upstream 4.9.5. `InvoicePdf`, `get_invoice_pdfs()`, `parse_invoice_pdfs()`, `download_invoice_pdf()` and the `invoice-pdfs` command, and amazon.de parsed in English, come from upstream. Upstream's Order parsing keeps every line of a `Recipient.address` in the unclassed-list layout, prefers the card over a Gift Card for `payment_method` when both paid, and skips a "Service cancelled" Order's totals; attribute values are read as text (`util.attribute_text()`), and sign-in refuses to send a password in a GET form. The fork's `resolve_site_url()` sits beside upstream's `attribute_text()`, and the fork's output renderers beside upstream's Invoice PDF and Family Member ones.
 - Synced with upstream 4.9.4. `FamilyMember`, `get_family_members()` / `parse_family_members()`, `family_member_id` on `get_order_history()` and `get_order_history_page()`, the `family-members` command, and passkey sign-in come from upstream, beside the fork's `parse_order_history_page()` and `last_history_pull`. Upstream's Order parsing reads the payment method and its last digits from a third layout (`[data-testid='payment-instrument-message']`, digits after `•`), and text output shows a $0.00 Grand Total (alexdlaird/amazon-orders#152).
@@ -57,8 +59,22 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Page-supplied next-page URLs are no longer followed off-origin. The Order history pager link and the Lists "See More" URL are read out of the page and requested with the session; both made a relative value absolute but requested an absolute value as it stood, so a page naming another host would have been fetched with the library's headers and its response parsed as Amazon's. `util.resolve_site_url()` now resolves such values against `BASE_URL` and drops any whose scheme or host differs (`www.` ignored), logging a warning; the walks end there with `stop_reason="off_origin_next_page"` on `last_history_pull` / `last_list_pull`, and `WishListPageResult.next_page_off_origin` reports it on the parse-from-string path. The gift-card and transactions walks POST page state to fixed URLs and were never affected.
 - `AmazonOrders.last_history_pull` is no longer populated when a `full_details` pull fails mid-fetch, honoring its stays-`None`-on-failure contract.
 - `digital-orders --year --all` now fails explicitly instead of silently ignoring `--year`.
-- `Parsable.safe_parse()` now also degrades a field on `TypeError` and `RecursionError`, which is what page-embedded JSON produces when it is valid but not the expected shape (the Order address fallback wraps it in `BeautifulSoup`) or nested deeply enough to exhaust the interpreter's stack (`json.loads` raises `RecursionError`, a `RuntimeError`, not a `ValueError`). Previously either aborted the whole entity instead of degrading one field. Required-field errors still propagate.
 - `AmazonRewards` now raises `AmazonOrdersError` rather than a bare `RecursionError` on deeply nested page data.
+
+## [4.10.0](https://github.com/alexdlaird/amazon-orders/compare/4.9.6...4.10.0) - 2026-10-21
+
+### Added
+
+- `amazonorders.util.has_display()`, the display check made before opening a browser window.
+
+### Changed
+
+- Each Amazon site keeps its own session (e.g. `cookies.amazon.de.json`), so signing in to one with `domain` no longer signs out of another.
+
+### Fixed
+
+- Akamai's interstitial JavaScript challenge is now detected, and `PlaywrightJSAuthForm` tries to resolve it in the browser.
+- Bug fixes and stability improvements.
 
 ## [4.9.6](https://github.com/alexdlaird/amazon-orders/compare/4.9.5...4.9.6) - 2026-10-21
 
