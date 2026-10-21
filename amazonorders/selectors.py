@@ -385,6 +385,34 @@ class Selectors:
     FIELD_INVOICE_PDF_CREDIT_NOTE_TEXT = "Credit note"
 
     #####################################
+    # CSS selectors for Prime payment fields
+    #####################################
+
+    PRIME_PAYMENTS_WIDGET_SELECTOR = "div[cel_widget_id^='prime-payment-history_']"
+    PRIME_PAYMENT_SELECTOR = "div.a-cardui"
+    #: Membership Central's "Oops." error page, served in place of the payments
+    PRIME_PAYMENTS_ERROR_SELECTOR = "div.mc-container-small"
+
+    FIELD_PRIME_PAYMENT_DATE_SELECTOR = "div.a-cardui-header h3"
+    # Each card body row is a label span followed by its value, so the row is found by its label and the value
+    # is read from the row (the label's parent). The cards' build-hashed classes change between deployments.
+    FIELD_PRIME_PAYMENT_LABEL_SELECTOR = "div.a-cardui-body span.a-color-tertiary"
+    FIELD_PRIME_PAYMENT_TOTAL_TEXT = "Total"
+    FIELD_PRIME_PAYMENT_ORDER_NUMBER_TEXT = "Order Number"
+    FIELD_PRIME_PAYMENT_RECEIPTS_TEXT = "Receipts"
+    FIELD_PRIME_PAYMENT_TOTAL_LABEL_SELECTOR = SelectorsFromText(
+        lambda label_selector, total_text: Selector(label_selector, total_text),
+        "FIELD_PRIME_PAYMENT_LABEL_SELECTOR", "FIELD_PRIME_PAYMENT_TOTAL_TEXT")
+    FIELD_PRIME_PAYMENT_ORDER_NUMBER_LABEL_SELECTOR = SelectorsFromText(
+        lambda label_selector, order_number_text: Selector(label_selector, order_number_text),
+        "FIELD_PRIME_PAYMENT_LABEL_SELECTOR", "FIELD_PRIME_PAYMENT_ORDER_NUMBER_TEXT")
+    FIELD_PRIME_PAYMENT_RECEIPTS_LABEL_SELECTOR = SelectorsFromText(
+        lambda label_selector, receipts_text: Selector(label_selector, receipts_text),
+        "FIELD_PRIME_PAYMENT_LABEL_SELECTOR", "FIELD_PRIME_PAYMENT_RECEIPTS_TEXT")
+    FIELD_PRIME_PAYMENT_VALUE_SELECTOR = "p"
+    FIELD_PRIME_PAYMENT_RECEIPT_LINK_SELECTOR = "a[href]"
+
+    #####################################
     # CSS selectors for Transaction fields
     #####################################
 
@@ -441,37 +469,6 @@ class Selectors:
     #####################################
 
     REWARDS_NEXT_DATA_SELECTOR = "script#__NEXT_DATA__"
-
-    #####################################
-    # CSS selectors for Prime
-    #
-    # The Prime membership payment history (/mc/payments) is a Membership
-    # Central page whose payment cards are server-rendered: one a-cardui
-    # per membership charge, the charge date in the card header, and
-    # label/value rows ("Total", "Order Number", "Receipts") in the body.
-    # The cards also carry build-hashed classes (_cHJpb_…) that change
-    # between deployments, so selection anchors on the widget id, the
-    # a-cardui framework classes, and the visible row labels instead.
-    #####################################
-
-    PRIME_PAYMENTS_WIDGET_SELECTOR = "div[cel_widget_id^='prime-payment-history_']"
-    PRIME_PAYMENT_SELECTOR = "div.a-cardui"
-
-    FIELD_PRIME_PAYMENT_DATE_SELECTOR = "div.a-cardui-header h3"
-    # Each body row is a label span followed by its value; the label selectors match the span, and
-    # the value is read from the row (the label's parent) with the value selector
-    FIELD_PRIME_PAYMENT_TOTAL_LABEL_SELECTOR = Selector("div.a-cardui-body span.a-color-tertiary", text="Total")
-    FIELD_PRIME_PAYMENT_ORDER_NUMBER_LABEL_SELECTOR = Selector("div.a-cardui-body span.a-color-tertiary",
-                                                               text="Order Number")
-    FIELD_PRIME_PAYMENT_RECEIPTS_LABEL_SELECTOR = Selector("div.a-cardui-body span.a-color-tertiary",
-                                                           text="Receipts")
-    FIELD_PRIME_PAYMENT_VALUE_SELECTOR = "p"
-    FIELD_PRIME_PAYMENT_RECEIPT_LINK_SELECTOR = "a[href]"
-
-    # Membership Central's own error page, served with a 200 at the payments route in place of the
-    # widget for the library's client, from datacenter and residential addresses alike, while the same
-    # session read the retail pages fine: an "Oops." heading over "there's a problem with this page"
-    PRIME_PAYMENTS_ERROR_SELECTOR = Selector("h1.a-text-bold", text_contains="Oops.")
 
     #####################################
     # CSS selectors for Lists (wish lists)

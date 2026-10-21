@@ -9,8 +9,10 @@ FORK_PLUMBING_LITERALS = {
     # Order history: the no-JavaScript fallback parameter, page types, stop reasons, and meta keys
     "disableCsd", "no-js", "orders", "csd_encrypted", "empty_window", "not_order_history", "empty_history",
     "single_page_requested", "off_origin_next_page", "no_more_pages", "partial_orders",
-    # PrimePayment: field names in the required-field errors
-    "total", "order_number",
+    # Prime payments page: the page types parse_prime_payments_page() reports
+    "payments", "empty", "not_prime_payments", "error",
+    # PrimePayment.total: the deprecation warning of the alias kept for one release
+    "PrimePayment.total is deprecated, use PrimePayment.grand_total.",
     # RewardsBalance: keys of the page's __NEXT_DATA__ JSON
     "pointsBalance", "amount", "points", "balance", "unit", "pointsUnit", "conversionRate", "lastUpdateTime",
     "cardDisplayName", "tail", "brand", "cobrand", "cardVariant", "enrolledWithShopWithPoints",

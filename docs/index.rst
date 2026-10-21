@@ -67,8 +67,9 @@ Basic Usage
 ===========
 
 You'll use :class:`~amazonorders.session.AmazonSession` to authenticate your Amazon account, then
-:class:`~amazonorders.orders.AmazonOrders`, :class:`~amazonorders.transactions.AmazonTransactions`, and
-:class:`~amazonorders.gift_cards.AmazonGiftCards` to interact with account data.
+:class:`~amazonorders.orders.AmazonOrders`, :class:`~amazonorders.transactions.AmazonTransactions`,
+:class:`~amazonorders.gift_cards.AmazonGiftCards`, and :class:`~amazonorders.prime.AmazonPrime` to interact with
+account data.
 :func:`~amazonorders.orders.AmazonOrders.get_order_history` and
 :func:`~amazonorders.orders.AmazonOrders.get_order` are good places to start.
 
@@ -127,7 +128,7 @@ Prime Payments
 Prime membership fees are billed as digital Orders (``D01-`` IDs) that neither the Order history nor the
 Digital Orders tab lists; the Prime payments page under Membership Central is the only listing of them.
 :class:`~amazonorders.prime.AmazonPrime` reads it, and each
-:class:`~amazonorders.entity.prime_payment.PrimePayment` carries the charge date, the total, and the Order
+:class:`~amazonorders.entity.prime_payment.PrimePayment` carries the charge date, the grand total, and the Order
 number. The Order itself (line item, payment method, subtotal, and tax) renders in the standard Order details
 layout, so it is fetched like any other Order.
 
@@ -138,17 +139,20 @@ layout, so it is fetched like any other Order.
     prime = AmazonPrime(amazon_session)
 
     for payment in prime.get_prime_payments():
-        print(f"{payment.payment_date} - {payment.total} - {payment.order_number}")
+        print(f"{payment.payment_date} - {payment.grand_total} - {payment.order_number}")
 
         order = amazon_orders.get_order(payment.order_number)
 
 An already-fetched page (for instance, one saved from a browser) can be parsed without a session with
-:func:`~amazonorders.prime.AmazonPrime.parse_prime_payments_page`, whose result's
+:func:`~amazonorders.prime.AmazonPrime.parse_prime_payments`, which raises for any page that isn't the payments
+page, or with :func:`~amazonorders.prime.AmazonPrime.parse_prime_payments_page`, whose result's
 :attr:`~amazonorders.prime.PrimePaymentsPageResult.page_type` tells a member with no payments apart from a
 sign-in or challenge page, and from Membership Central's own error page. Membership Central serves that error
 page to this library's client, from datacenter and residential addresses alike, while a browser on the same
-account receives the payments, so :func:`~amazonorders.prime.AmazonPrime.get_prime_payments` is best-effort and
-parsing a browser-fetched page is the reliable path.
+account receives the payments, so :func:`~amazonorders.prime.AmazonPrime.get_prime_payments` is best-effort (it
+raises :class:`~amazonorders.exception.AmazonOrdersUnavailableError` on that page) and parsing a browser-fetched
+page is the reliable path. ``PrimePayment.total`` remains for one release as a deprecated alias of
+``grand_total``.
 
 Digital Orders
 --------------
