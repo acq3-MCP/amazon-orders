@@ -7,6 +7,7 @@ from bs4 import BeautifulSoup
 
 from amazonorders.selectors import Selector
 from amazonorders.util import to_type, to_date, cleanup_html_text, select, select_one
+from amazonorders.util import resolve_site_url
 from tests.unittestcase import UnitTestCase
 
 
@@ -131,3 +132,38 @@ class TestUtil(UnitTestCase):
 
         # THEN
         self.assertIsNone(tag)
+
+    def test_resolve_site_url(self):
+        # GIVEN
+        base = self.test_config.constants.BASE_URL
+
+        # WHEN/THEN
+        self.assertEqual(f"{base}/your-orders/orders?timeFilter=year-2024&startIndex=10",
+                         resolve_site_url("/your-orders/orders?timeFilter=year-2024&startIndex=10", self.test_config))
+        self.assertEqual("https://www.amazon.com/your-orders/orders?startIndex=10",
+                         resolve_site_url("https://www.amazon.com/your-orders/orders?startIndex=10", self.test_config))
+        self.assertEqual("https://amazon.com/gc/balance?page=2",
+                         resolve_site_url("https://amazon.com/gc/balance?page=2", self.test_config))
+        self.assertEqual("https://WWW.Amazon.com:443/gc/balance",
+                         resolve_site_url("https://WWW.Amazon.com:443/gc/balance", self.test_config))
+        self.assertIsNone(resolve_site_url("", self.test_config))
+        self.assertIsNone(resolve_site_url("   ", self.test_config))
+        self.assertIsNone(resolve_site_url(None, self.test_config))
+
+    def test_resolve_site_url_off_origin(self):
+        # GIVEN
+        values = ["https://evil.example/your-orders/orders",
+                  "https://www.amazon.com.evil.example/your-orders/orders",
+                  "https://notamazon.com/your-orders/orders",
+                  "https://www.amazon.com@evil.example/your-orders/orders",
+                  "http://www.amazon.com/your-orders/orders"]
+
+        for value in values:
+            with self.subTest(value=value):
+                # WHEN
+                with self.assertLogs("amazonorders.util", level="WARNING") as logs:
+                    url = resolve_site_url(value, self.test_config)
+
+                # THEN
+                self.assertIsNone(url)
+                self.assertIn("another origin", logs.output[0])

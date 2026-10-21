@@ -3,6 +3,7 @@ __license__ = "MIT"
 
 import datetime
 import os
+import re
 from unittest.mock import patch
 
 import responses
@@ -158,6 +159,27 @@ class TestGiftCards(UnitTestCase):
         self.assertIn("next=", resp2.calls[0].request.url)
         self.assertIn("next=", resp3.calls[0].request.url)
         self.assertEqual(datetime.date(2015, 12, 30), activity[-1].activity_date)
+
+    @responses.activate
+    @patch("amazonorders.gift_cards.datetime", wraps=datetime)
+    def test_get_gift_card_activity_off_origin_next_page(self, mock_today):
+        # GIVEN
+        mock_today.date.today.return_value = datetime.date(2026, 5, 15)
+        self.amazon_session.is_authenticated = True
+        html = self.read_gift_card_page("gift-card-balance-activity.html").replace(
+            'href="/gc/balance?ref_=gcf_b_bp_b_c_d_b_w&amp;next=',
+            'href="https://evil.example/gc/balance?ref_=gcf_b_bp_b_c_d_b_w&amp;next=')
+        resp1 = responses.add(responses.GET, self.test_config.constants.GIFT_CARD_BALANCE_URL, body=html, status=200)
+        resp2 = responses.add(responses.GET, re.compile(r"https://evil\.example/.*"), body="", status=200)
+
+        # WHEN
+        with self.assertLogs("amazonorders.util", level="WARNING"):
+            activity = self.amazon_gift_cards.get_gift_card_activity(days=4000)
+
+        # THEN
+        self.assertEqual(15, len(activity))
+        self.assertEqual(1, resp1.call_count)
+        self.assertEqual(0, resp2.call_count)
 
     @responses.activate
     @patch("amazonorders.gift_cards.datetime", wraps=datetime)

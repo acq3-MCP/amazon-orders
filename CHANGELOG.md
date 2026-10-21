@@ -9,6 +9,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Fixed
 
 - Akamai's interstitial JavaScript challenge is now detected, and `PlaywrightJSAuthForm` tries to resolve it in the browser.
+- The Order history and Gift Card activity walks no longer follow a next-page link to another origin; the link is logged and treated as the last page.
 
 ## [4.9.6](https://github.com/alexdlaird/amazon-orders/compare/4.9.5...4.9.6) - 2026-10-21
 

@@ -6,13 +6,17 @@ import logging
 import re
 import unicodedata
 from datetime import date, datetime
-from typing import Iterable, List, Union, Optional, Callable, Any
+from typing import TYPE_CHECKING, Iterable, List, Union, Optional, Callable, Any
+from urllib.parse import urlparse
 
 from bs4 import Tag, BeautifulSoup
 from dateutil import parser
 from requests import Response
 
 from amazonorders.selectors import Selector
+
+if TYPE_CHECKING:
+    from amazonorders.conf import AmazonOrdersConfig
 
 logger = logging.getLogger(__name__)
 
@@ -253,6 +257,37 @@ def cleanup_html_text(text: str) -> str:
     if not text.endswith("."):
         text += "."
     return text
+
+
+def _site_host(netloc: str) -> str:
+    """The host of a network location, lowercased, without userinfo, a port, or a ``www.`` prefix."""
+    host = netloc.lower().split("@")[-1].split(":")[0]
+    return host[4:] if host.startswith("www.") else host
+
+
+def resolve_site_url(value: Optional[str],
+                     config: "AmazonOrdersConfig") -> Optional[str]:
+    """
+    Make a page-supplied URL (a pager link) absolute against ``BASE_URL``, refusing one that names another
+    origin. The session must not be sent anywhere but the site, so an absolute value is kept only when its scheme
+    and host are the site's own (``www.`` ignored); anything else is logged and dropped.
+
+    :param value: The URL as the page carries it, relative or absolute.
+    :param config: The config whose ``BASE_URL`` is the site.
+    :return: The absolute URL, or ``None`` when the value is empty or on another origin.
+    """
+    value = (value or "").strip()
+    if not value:
+        return None
+
+    base = urlparse(config.constants.BASE_URL)
+    url = value if value.startswith("http") else f"{config.constants.BASE_URL}{value}"
+    target = urlparse(url)
+    if target.scheme != base.scheme or _site_host(target.netloc) != _site_host(base.netloc):
+        logger.warning(f"Ignoring a page-supplied URL on another origin: {url}")
+        return None
+
+    return url
 
 
 def attribute_text(value: Union[str, Iterable[str]]) -> str:
