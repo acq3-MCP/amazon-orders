@@ -2,7 +2,6 @@ __copyright__ = "Copyright (c) 2024-2025 Alex Laird"
 __license__ = "MIT"
 
 import logging
-import warnings
 from datetime import date
 from typing import Optional, Union
 
@@ -45,16 +44,6 @@ class PrimePayment(Parsable):
         self.order_details_link: Optional[str] = self.safe_parse(self._parse_order_details_link)
         #: The "View Receipt" link, the digital Order summary's print view. ``None`` when the card has none.
         self.receipt_link: Optional[str] = self.safe_parse(self._parse_receipt_link)
-
-    @property
-    def total(self) -> Optional[float]:
-        """
-        Deprecated alias of :attr:`grand_total`, the name before upstream's ``PrimePayment``. Kept for one release so
-        code written against it can move over; read :attr:`grand_total` instead.
-        """
-        warnings.warn("PrimePayment.total is deprecated, use PrimePayment.grand_total.", DeprecationWarning,
-                      stacklevel=2)
-        return self.grand_total
 
     def __repr__(self) -> str:
         return f"<PrimePayment {self.payment_date}: \"Order #{self.order_number}, Grand Total: {self.grand_total}\">"

@@ -189,16 +189,3 @@ class TestPrime(UnitTestCase):
         with self.assertRaises(AmazonOrdersError) as cm:
             AmazonPrime.parse_prime_payments_page(html, self.test_config)
         self.assertIn("Could not parse Prime payments.", str(cm.exception))
-
-    def test_prime_payment_total_is_a_deprecated_alias(self):
-        # GIVEN
-        payment = AmazonPrime.parse_prime_payments(self.read_resource("prime", "prime-payments.html"),
-                                                   self.test_config)[0]
-
-        # WHEN
-        with self.assertWarns(DeprecationWarning):
-            total = payment.total
-
-        # THEN
-        self.assertEqual(payment.grand_total, total)
-        self.assertNotIn("total", payment.to_dict())

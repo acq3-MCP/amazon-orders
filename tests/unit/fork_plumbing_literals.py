@@ -11,8 +11,6 @@ FORK_PLUMBING_LITERALS = {
     "single_page_requested", "off_origin_next_page", "no_more_pages", "partial_orders",
     # Prime payments page: the page types parse_prime_payments_page() reports
     "payments", "empty", "not_prime_payments", "error",
-    # PrimePayment.total: the deprecation warning of the alias kept for one release
-    "PrimePayment.total is deprecated, use PrimePayment.grand_total.",
     # RewardsBalance: keys of the page's __NEXT_DATA__ JSON
     "pointsBalance", "amount", "points", "balance", "unit", "pointsUnit", "conversionRate", "lastUpdateTime",
     "cardDisplayName", "tail", "brand", "cobrand", "cardVariant", "enrolledWithShopWithPoints",
