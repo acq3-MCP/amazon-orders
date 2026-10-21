@@ -10,7 +10,9 @@ from typing import Any, Dict, List, Sequence
 import yaml
 
 from amazonorders.conf import AmazonOrdersConfig
+from amazonorders.entity.family_member import FamilyMember
 from amazonorders.entity.gift_card_activity import GiftCardActivity
+from amazonorders.entity.invoice_pdf import InvoicePdf
 from amazonorders.entity.order import Order
 from amazonorders.entity.parsable import Parsable
 from amazonorders.entity.prime_payment import PrimePayment
@@ -99,6 +101,10 @@ class OutputFormatter:
             return self.wish_list_text(entity)
         elif isinstance(entity, WishListItem):
             return self.wish_list_item_text(entity)
+        elif isinstance(entity, InvoicePdf):
+            return self.invoice_pdf_text(entity)
+        elif isinstance(entity, FamilyMember):
+            return self.family_member_text(entity)
 
         return str(entity)
 
@@ -206,6 +212,35 @@ Order #{order_number}
             rewards_str += f"\n  Last Updated: {rewards.last_update_time}"
 
         return rewards_str
+
+    def invoice_pdf_text(self,
+                         invoice_pdf: InvoicePdf) -> str:
+        """
+        Render an InvoicePdf as human-readable text.
+
+        :param invoice_pdf: The InvoicePdf to render.
+        :return: The InvoicePdf as text.
+        """
+        invoice_pdf_str = f"Invoice PDF: {invoice_pdf.name}"
+        invoice_pdf_str += f"\n  Order #{invoice_pdf.order_number}"
+        if invoice_pdf.is_credit_note:
+            invoice_pdf_str += "\n  Credit Note: True"
+        invoice_pdf_str += f"\n  Link: {invoice_pdf.link}"
+
+        return invoice_pdf_str
+
+    def family_member_text(self,
+                           family_member: FamilyMember) -> str:
+        """
+        Render a FamilyMember as human-readable text.
+
+        :param family_member: The FamilyMember to render.
+        :return: The FamilyMember as text.
+        """
+        family_member_str = f"Family Member: {family_member.name}"
+        family_member_str += f"\n  ID: {family_member.id}"
+
+        return family_member_str
 
     def _csv(self,
              entities: List[Dict[str, Any]]) -> str:
