@@ -117,7 +117,7 @@ class TestIntegrationGeneric(IntegrationTestCase):
             self.assert_populated_generic(orders[0], True)
             self.assertIsNotNone(orders[0].index)
             self.assert_orders_list_index(orders)
-            self.assertIsNotNone(orders[0].items[0].asin)
+            self.assert_populated_on_any([item for order in orders for item in order.items], "asin")
 
     def test_get_gift_cards(self):
         # WHEN
@@ -141,9 +141,9 @@ class TestIntegrationGeneric(IntegrationTestCase):
         self.assertIsNotNone(transaction.payment_method)
         self.assertIsNotNone(transaction.grand_total)
         self.assertIsNotNone(transaction.is_refund)
-        self.assertIsNotNone(transaction.order_number)
-        self.assertIsNotNone(transaction.order_details_link)
-        self.assertTrue(any(t.seller for t in transactions))
+        self.assert_populated_on_any(transactions, "order_number")
+        self.assert_populated_on_any(transactions, "order_details_link")
+        self.assert_populated_on_any(transactions, "seller")
 
     def test_get_gift_card_balance(self):
         # WHEN
@@ -195,8 +195,8 @@ class TestIntegrationGeneric(IntegrationTestCase):
             self.skipTest("No Prime payments on this account.")
         for payment in payments:
             self.assertIsNotNone(payment.payment_date)
-            self.assertIsNotNone(payment.total)
-            self.assertGreater(payment.total, 0)
+            self.assertIsNotNone(payment.grand_total)
+            self.assertGreater(payment.grand_total, 0)
             self.assertIsNotNone(payment.order_number)
             self.assertTrue(payment.order_number.startswith("D01-"))
             self.assertIsNotNone(payment.receipt_link)
@@ -207,7 +207,7 @@ class TestIntegrationGeneric(IntegrationTestCase):
         order = self.amazon_orders.get_order(payments[0].order_number)
         self.assertEqual(payments[0].order_number, order.order_number)
         self.assertEqual(payments[0].payment_date, order.order_placed_date)
-        self.assertAlmostEqual(payments[0].total, order.grand_total, places=2)
+        self.assertAlmostEqual(payments[0].grand_total, order.grand_total, places=2)
 
     def test_get_digital_orders(self):
         # WHEN

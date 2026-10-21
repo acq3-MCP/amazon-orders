@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased](https://github.com/alexdlaird/amazon-orders/compare/4.9.5...HEAD)
+## [Unreleased](https://github.com/alexdlaird/amazon-orders/compare/4.9.6...HEAD)
 
 ### Added
 
@@ -29,6 +29,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- Synced with upstream 4.9.6. Prime is upstream's now (alexdlaird/amazon-orders#144): `AmazonPrime`, `PrimePayment`, their selectors, the `prime-payments` command and its text renderer replace the fork's. `PrimePayment.grand_total` is the field, and `total` stays for one release as a deprecated alias. `get_prime_payments()` raises `AmazonOrdersUnavailableError` on Membership Central's error page. The fork keeps `parse_prime_payments_page()` and `PrimePaymentsPageResult` on top of upstream's parsing, with the same page types; a card that fails to parse no longer carries `partial_payments` in the error's `meta`. Order history builds share one thread pool per batch, so `thread_pool_size` bounds them, and queued builds are cancelled when one fails (alexdlaird/amazon-orders#157); `last_history_pull` is still recorded for a history with no Orders.
 - Synced with upstream 4.9.5. `InvoicePdf`, `get_invoice_pdfs()`, `parse_invoice_pdfs()`, `download_invoice_pdf()` and the `invoice-pdfs` command, and amazon.de parsed in English, come from upstream. Upstream's Order parsing keeps every line of a `Recipient.address` in the unclassed-list layout, prefers the card over a Gift Card for `payment_method` when both paid, and skips a "Service cancelled" Order's totals; attribute values are read as text (`util.attribute_text()`), and sign-in refuses to send a password in a GET form. The fork's `resolve_site_url()` sits beside upstream's `attribute_text()`, and the fork's output renderers beside upstream's Invoice PDF and Family Member ones.
 - Synced with upstream 4.9.4. `FamilyMember`, `get_family_members()` / `parse_family_members()`, `family_member_id` on `get_order_history()` and `get_order_history_page()`, the `family-members` command, and passkey sign-in come from upstream, beside the fork's `parse_order_history_page()` and `last_history_pull`. Upstream's Order parsing reads the payment method and its last digits from a third layout (`[data-testid='payment-instrument-message']`, digits after `•`), and text output shows a $0.00 Grand Total (alexdlaird/amazon-orders#152).
 - Synced with upstream 4.9.3. `login()` now decides it is signed in from the nav greeting (`Selectors.NAV_GREETING_SELECTOR`) instead of searching the page for `nav-item-signout`; the rest is documentation (the `digital-orders` order filter) and upstream's CI.
@@ -58,16 +59,26 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - `Parsable.safe_parse()` now also degrades a field on `TypeError` and `RecursionError`, which is what page-embedded JSON produces when it is valid but not the expected shape (the Order address fallback wraps it in `BeautifulSoup`) or nested deeply enough to exhaust the interpreter's stack (`json.loads` raises `RecursionError`, a `RuntimeError`, not a `ValueError`). Previously either aborted the whole entity instead of degrading one field. Required-field errors still propagate.
 - `AmazonRewards` now raises `AmazonOrdersError` rather than a bare `RecursionError` on deeply nested page data.
 
+## [4.9.6](https://github.com/alexdlaird/amazon-orders/compare/4.9.5...4.9.6) - 2026-10-21
+
+### Added
+
+- `AmazonPrime`, the `PrimePayment` entity, and the `prime-payments` CLI command, for the Prime membership payment history.
+
+### Fixed
+
+- Bug fixes and stability improvements.
+
 ## [4.9.5](https://github.com/alexdlaird/amazon-orders/compare/4.9.4...4.9.5) - 2026-10-20
 
 ### Added
 
 - `InvoicePdf` entity, `AmazonOrders.get_invoice_pdfs()`, `parse_invoice_pdfs()`, and `download_invoice_pdf()`, and the `invoice-pdfs` CLI command (with `--download`), for an Order's invoice PDFs, including credit notes.
-- Parsing of amazon.de in English, with British English labels ("Postage & Packing", "Estimated VAT"), and its pages as test resources.
+- Parsing of `amazon.de` in English, with British English labels ("Postage & Packing", "Estimated VAT").
 
 ### Fixed
 
-- `Recipient.address` keeps every line of the address, including the country, where it ran the first two together.
+- `Recipient.address` keeps every line of the address, including the country.
 - Bug fixes and stability improvements.
 
 ## [4.9.4](https://github.com/alexdlaird/amazon-orders/compare/4.9.3...4.9.4) - 2026-10-19

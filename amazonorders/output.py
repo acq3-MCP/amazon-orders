@@ -95,8 +95,6 @@ class OutputFormatter:
             return self.gift_card_activity_text(entity)
         elif isinstance(entity, RewardsBalance):
             return self.rewards_balance_text(entity)
-        elif isinstance(entity, PrimePayment):
-            return self.prime_payment_text(entity)
         elif isinstance(entity, WishList):
             return self.wish_list_text(entity)
         elif isinstance(entity, WishListItem):
@@ -105,6 +103,8 @@ class OutputFormatter:
             return self.invoice_pdf_text(entity)
         elif isinstance(entity, FamilyMember):
             return self.family_member_text(entity)
+        elif isinstance(entity, PrimePayment):
+            return self.prime_payment_text(entity)
 
         return str(entity)
 
@@ -242,6 +242,26 @@ Order #{order_number}
 
         return family_member_str
 
+    def prime_payment_text(self,
+                           payment: PrimePayment) -> str:
+        """
+        Render a PrimePayment as human-readable text.
+
+        :param payment: The PrimePayment to render.
+        :return: The PrimePayment as text.
+        """
+        payment_str = f"Prime Payment: {payment.payment_date}"
+        if payment.order_number:
+            payment_str += f"\n  Order #{payment.order_number}"
+        if payment.grand_total is not None:
+            payment_str += f"\n  Grand Total: {self.config.constants.format_currency(payment.grand_total)}"
+        if payment.order_details_link:
+            payment_str += f"\n  Order Details Link: {payment.order_details_link}"
+        if payment.receipt_link:
+            payment_str += f"\n  Receipt Link: {payment.receipt_link}"
+
+        return payment_str
+
     def _csv(self,
              entities: List[Dict[str, Any]]) -> str:
         if not entities:
@@ -290,23 +310,6 @@ Order #{order_number}
     def _single_line(self,
                      value: str) -> str:
         return " ".join(value.split())
-
-    def prime_payment_text(self,
-                           payment: PrimePayment) -> str:
-        """
-        Render a PrimePayment as human-readable text.
-
-        :param payment: The PrimePayment to render.
-        :return: The PrimePayment as text.
-        """
-        total = self.config.constants.format_currency(payment.total) if payment.total is not None else "N/A"
-        payment_str = f"Prime Payment {payment.payment_date}: {total}"
-        if payment.order_number:
-            payment_str += f"\n  Order #: {payment.order_number}"
-        if payment.receipt_link:
-            payment_str += f"\n  Receipt: {payment.receipt_link}"
-
-        return payment_str
 
     def wish_list_text(self,
                        wish_list: WishList) -> str:

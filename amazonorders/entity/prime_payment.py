@@ -2,8 +2,9 @@ __copyright__ = "Copyright (c) 2024-2025 Alex Laird"
 __license__ = "MIT"
 
 import logging
+import warnings
 from datetime import date
-from typing import Optional, TypeVar, Union
+from typing import Optional, Union
 
 from bs4 import Tag
 
@@ -15,19 +16,16 @@ from amazonorders.selectors import Selector
 
 logger = logging.getLogger(__name__)
 
-T = TypeVar("T")
-
 
 class PrimePayment(Parsable):
     """
-    One charge in the Prime membership payment history: the membership fee Amazon billed on a
-    sign-up or renewal date, as listed on the Prime payments page.
+    A charge in the Prime membership payment history: the membership fee Amazon billed on a sign-up or
+    renewal date.
 
-    Each charge is a digital Order (a ``D01-`` ID) that neither the Order history nor the Digital
-    Orders tab lists, so this entity is the index to it. The Order itself, with its line item,
-    payment method, subtotal, and tax, is fetched by :attr:`order_number` with
-    :func:`~amazonorders.orders.AmazonOrders.get_order`, which renders the standard Order details
-    layout for these IDs.
+    Each charge is a digital Order (a ``D01-`` ID) that neither the Order history nor the Digital Orders tab
+    lists, so this entity is the index to it. The Order itself is fetched by :attr:`order_number` with
+    :func:`~amazonorders.orders.AmazonOrders.get_order`, which renders the standard Order details layout for
+    these IDs.
     """
 
     def __init__(self,
@@ -35,72 +33,76 @@ class PrimePayment(Parsable):
                  config: AmazonOrdersConfig) -> None:
         super().__init__(parsed, config)
 
-        #: The date the membership fee was charged. This is the charge date, not the start of the
-        #: membership period it covers.
+        #: The date the membership fee was charged, not the start of the membership period it covers.
         self.payment_date: Optional[date] = self.safe_simple_parse(
             selector=self.config.selectors.FIELD_PRIME_PAYMENT_DATE_SELECTOR,
-            parse_date=True
-        )
-        #: The amount charged, tax included, as the page lists it.
-        self.total: Optional[float] = self.safe_parse(self._parse_total)
+            parse_date=True)
+        #: The amount charged, tax included.
+        self.grand_total: Optional[float] = self.safe_parse(self._parse_grand_total)
         #: The digital Order number (``D01-…``) of the charge.
         self.order_number: Optional[str] = self.safe_parse(self._parse_order_number)
-        #: The Order details link. ``None`` whenever :attr:`order_number` is ``None``.
+        #: The Order details link. ``None`` when :attr:`order_number` is ``None``.
         self.order_details_link: Optional[str] = self.safe_parse(self._parse_order_details_link)
-        #: The absolute URL of the card's "View Receipt" link (the digital Order summary's print
-        #: view). ``None`` when the card renders no receipt link.
+        #: The "View Receipt" link, the digital Order summary's print view. ``None`` when the card has none.
         self.receipt_link: Optional[str] = self.safe_parse(self._parse_receipt_link)
 
-    def __repr__(self) -> str:
-        return f"<PrimePayment {self.payment_date}: \"{self.total}, Order #: {self.order_number}\">"
+    @property
+    def total(self) -> Optional[float]:
+        """
+        Deprecated alias of :attr:`grand_total`, the name before upstream's ``PrimePayment``. Kept for one release so
+        code written against it can move over; read :attr:`grand_total` instead.
+        """
+        warnings.warn("PrimePayment.total is deprecated, use PrimePayment.grand_total.", DeprecationWarning,
+                      stacklevel=2)
+        return self.grand_total
 
-    def __str__(self) -> str:  # pragma: no cover
-        return f"PrimePayment {self.payment_date}: {self.total}, Order #: {self.order_number}"
+    def __repr__(self) -> str:
+        return f"<PrimePayment {self.payment_date}: \"Order #{self.order_number}, Grand Total: {self.grand_total}\">"
+
+    def __str__(self) -> str:
+        return f"PrimePayment {self.payment_date}: Order #{self.order_number}, Grand Total: {self.grand_total}"
+
+    def _parse_labeled_row(self,
+                           label_selector: Selector) -> Optional[Tag]:
+        label_tag = util.select_one(self.parsed, label_selector)
+
+        return label_tag.parent if label_tag else None
 
     def _parse_labeled_value(self,
                              label_selector: Selector) -> Optional[str]:
-        """
-        Read the value of a card body row by its label: the label selector matches the label span, and
-        the value is the row's (the label's parent) value tag.
+        row_tag = self._parse_labeled_row(label_selector)
+        value_tag = util.select_one(row_tag, self.config.selectors.FIELD_PRIME_PAYMENT_VALUE_SELECTOR) \
+            if row_tag else None
 
-        :param label_selector: The selector matching the row's label.
-        :return: The row's value text, or ``None`` when the row or its value is absent.
-        """
-        label_tag = util.select_one(self.parsed, label_selector)
-        if label_tag is None or label_tag.parent is None:
-            return None
+        return value_tag.text.strip() if value_tag else None
 
-        value_tag = util.select_one(label_tag.parent, self.config.selectors.FIELD_PRIME_PAYMENT_VALUE_SELECTOR)
-        if value_tag is None:
-            return None
+    def _parse_grand_total(self) -> Union[float, int, None]:
+        text = self._parse_labeled_value(self.config.selectors.FIELD_PRIME_PAYMENT_TOTAL_LABEL_SELECTOR)
+        value = self.to_currency(text) if text else None
 
-        return value_tag.text.strip()
+        if value is None:
+            err_msg = ("PrimePayment.grand_total could not be parsed, but it's required. "
+                       "Check if Amazon changed the HTML")
+            if not self.config.warn_on_missing_required_field:
+                raise AmazonOrdersError(f"{err_msg} or set warn_on_missing_required_field=True in config.")
 
-    def _require(self,
-                 value: Optional[T],
-                 name: str) -> Optional[T]:
-        if value is not None:
-            return value
+            logger.warning(f"{err_msg}.")
 
-        err_msg = (f"PrimePayment.{name} did not populate, but it's required. "
-                   "Check if Amazon changed the HTML.")
-        if not self.config.warn_on_missing_required_field:
-            raise AmazonOrdersError(err_msg)
-
-        logger.warning(err_msg)
-        return None
-
-    def _parse_total(self) -> Union[float, int, None]:
-        value = self._parse_labeled_value(self.config.selectors.FIELD_PRIME_PAYMENT_TOTAL_LABEL_SELECTOR)
-
-        return self._require(self.to_currency(value) if value is not None else None, "total")
+        return value
 
     def _parse_order_number(self) -> Optional[str]:
         value = self._parse_labeled_value(self.config.selectors.FIELD_PRIME_PAYMENT_ORDER_NUMBER_LABEL_SELECTOR)
-
         order_number = self.config.constants.parse_order_number(value) if value else None
 
-        return self._require(order_number, "order_number")
+        if order_number is None:
+            err_msg = ("PrimePayment.order_number could not be parsed, but it's required. "
+                       "Check if Amazon changed the HTML")
+            if not self.config.warn_on_missing_required_field:
+                raise AmazonOrdersError(f"{err_msg} or set warn_on_missing_required_field=True in config.")
+
+            logger.warning(f"{err_msg}.")
+
+        return order_number
 
     def _parse_order_details_link(self) -> Optional[str]:
         if not self.order_number:
@@ -110,12 +112,8 @@ class PrimePayment(Parsable):
         return f"{constants.ORDER_DETAILS_URL}?{constants.ORDER_ID_QUERY_PARAM}={self.order_number}"
 
     def _parse_receipt_link(self) -> Optional[str]:
-        label_tag = util.select_one(self.parsed, self.config.selectors.FIELD_PRIME_PAYMENT_RECEIPTS_LABEL_SELECTOR)
-        if label_tag is None or label_tag.parent is None:
-            return None
+        row_tag = self._parse_labeled_row(self.config.selectors.FIELD_PRIME_PAYMENT_RECEIPTS_LABEL_SELECTOR)
+        link_tag = util.select_one(row_tag, self.config.selectors.FIELD_PRIME_PAYMENT_RECEIPT_LINK_SELECTOR) \
+            if row_tag else None
 
-        link_tag = util.select_one(label_tag.parent, self.config.selectors.FIELD_PRIME_PAYMENT_RECEIPT_LINK_SELECTOR)
-        if link_tag is None or not link_tag.get("href"):
-            return None
-
-        return self.with_base_url(str(link_tag["href"]))
+        return self.with_base_url(str(link_tag["href"])) if link_tag else None

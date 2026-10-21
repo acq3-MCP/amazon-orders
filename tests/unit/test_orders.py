@@ -500,6 +500,23 @@ class TestOrders(UnitTestCase):
         self.assertIsNone(page.cursor)
 
     @responses.activate
+    def test_get_order_history_empty_history_records_last_history_pull(self):
+        # GIVEN a year with no Orders at all
+        self.amazon_session.is_authenticated = True
+        self.given_any_order_history_exists("order-history-2023-zero-orders.html")
+
+        # WHEN
+        orders = self.amazon_orders.get_order_history(year=2023)
+
+        # THEN the pull is still recorded, so the empty year reads as empty rather than unknown
+        self.assertEqual([], orders)
+        history_pull = self.amazon_orders.last_history_pull
+        self.assertIsNotNone(history_pull)
+        self.assertEqual(1, history_pull.pages_walked)
+        self.assertEqual(0, history_pull.rows_parsed)
+        self.assertEqual("empty_history", history_pull.stop_reason)
+
+    @responses.activate
     def test_get_order_history_page_leaves_last_history_pull(self):
         # GIVEN a get_order_history() pull has been recorded
         self.amazon_session.is_authenticated = True
