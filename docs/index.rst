@@ -231,7 +231,7 @@ Output Formats
 --------------
 
 The ``history``, ``order``, ``transactions``, ``order-transactions``, ``digital-orders``, ``gift-card-activity``,
-``rewards-balance``, ``prime-payments``, ``wish-lists``, and ``wish-list`` commands accept ``--output``, which renders their entities as ``text`` (the default), ``json``, ``yaml``, or ``csv``. Progress messages
+``family-members``, ``rewards-balance``, ``prime-payments``, ``wish-lists``, and ``wish-list`` commands accept ``--output``, which renders their entities as ``text`` (the default), ``json``, ``yaml``, or ``csv``. Progress messages
 are written to ``stderr``, so redirecting ``stdout`` captures only the data.
 
 .. code:: sh

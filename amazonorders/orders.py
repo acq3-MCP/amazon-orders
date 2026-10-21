@@ -12,6 +12,7 @@ from bs4 import BeautifulSoup, Tag
 
 from amazonorders import util
 from amazonorders.conf import AmazonOrdersConfig
+from amazonorders.entity.family_member import FamilyMember
 from amazonorders.entity.order import Order
 from amazonorders.entity.tracking import Tracking
 from amazonorders.exception import AmazonOrdersError, AmazonOrdersNotFoundError, AmazonOrdersUnavailableError
@@ -258,6 +259,20 @@ class AmazonOrders:
                                       next_page_url=cls._parse_next_page_url(parsed, config),
                                       page_type="orders")
 
+    @classmethod
+    def parse_family_members(cls,
+                             html: str,
+                             config: AmazonOrdersConfig) -> List[FamilyMember]:
+        """
+        Parse the Amazon Household members from an already-fetched Order history page, without a session driving
+        the fetch. Useful for parsing HTML obtained elsewhere and for network-free testing.
+
+        :param html: The Order history page HTML to parse.
+        :param config: The config providing the selectors used for parsing.
+        :return: The parsed FamilyMembers, or an empty list if the page lists none.
+        """
+        return cls._parse_family_members(BeautifulSoup(html, config.bs4_parser), config)
+
     def get_order(self,
                   order_id: str,
                   clone: Optional[Order] = None) -> Order:
@@ -413,6 +428,23 @@ class AmazonOrders:
 
         return invoice_response
 
+    def get_family_members(self) -> List[FamilyMember]:
+        """
+        Get the members of the Amazon Household whose Orders this account can view, such as linked Teen accounts,
+        from the Order history's member filter. Pass a member's
+        :attr:`~amazonorders.entity.family_member.FamilyMember.id` as ``family_member_id`` to
+        :func:`get_order_history` to get their Orders.
+
+        :return: The FamilyMembers, or an empty list if the account has none.
+        """
+        if not self.amazon_session.is_authenticated:
+            raise AmazonOrdersError("Call AmazonSession.login() to authenticate first.")
+
+        page_response = self.amazon_session.get(self.config.constants.ORDER_HISTORY_URL)
+        self.amazon_session.check_response(page_response)
+
+        return self._parse_family_members(page_response.parsed, self.config)
+
     def get_order_history(self,
                           year: Optional[int] = None,
                           start_index: Optional[int] = None,
@@ -421,7 +453,8 @@ class AmazonOrders:
                           time_filter: Optional[str] = None,
                           order_filter: Optional[str] = None,
                           progress: Optional[Callable[[int], None]] = None,
-                          progress_with_total: Optional[Callable[[int, Optional[int]], None]] = None) -> List[Order]:
+                          progress_with_total: Optional[Callable[[int, Optional[int]], None]] = None,
+                          family_member_id: Optional[str] = None) -> List[Order]:
         """
         Get the Amazon Order history for a given time period.
 
@@ -444,6 +477,8 @@ class AmazonOrders:
         :param progress_with_total: Like ``progress``, but also called with the number of Orders expected in total,
             from the count Amazon shows on the history page. The total is ``None`` if Amazon doesn't show one, or if
             ``order_filter`` is provided, since Amazon's count may not reflect it.
+        :param family_member_id: The ID of an Amazon Household member whose Orders to get, such as a linked Teen
+            account, from :func:`get_family_members`.
         :return: A list of the requested Orders.
         """
         if not self.amazon_session.is_authenticated:
@@ -451,7 +486,7 @@ class AmazonOrders:
 
         self.last_history_pull = None
 
-        next_page = self._order_history_url(year, start_index, time_filter, order_filter)
+        next_page = self._order_history_url(year, start_index, time_filter, order_filter, family_member_id)
         current_index = int(start_index) if start_index else 0
 
         orders, _, _ = asyncio.run(self._build_orders_async(next_page, keep_paging, full_details, current_index,
@@ -470,7 +505,8 @@ class AmazonOrders:
                                limit: Optional[int] = None,
                                cursor: Optional[Dict[str, Any]] = None,
                                progress: Optional[Callable[[int], None]] = None,
-                               progress_with_total: Optional[Callable[[int, Optional[int]], None]] = None
+                               progress_with_total: Optional[Callable[[int, Optional[int]], None]] = None,
+                               family_member_id: Optional[str] = None
                                ) -> PagedResults[Order]:
         """
         Get a batch of the Amazon Order history for a given time period, with a cursor to fetch the next batch.
@@ -494,6 +530,8 @@ class AmazonOrders:
             this batch (before their full details are fetched, if ``full_details`` is ``True``).
         :param progress_with_total: Like ``progress``, but also called with the number of Orders expected in this
             batch, as in :func:`get_order_history`, and at most ``limit`` until the batch ends.
+        :param family_member_id: The ID of an Amazon Household member whose Orders to get, as in
+            :func:`get_order_history`. Ignored if ``cursor`` is provided.
         :return: The batch of Orders, and the cursor for the next one.
         """
         if not self.amazon_session.is_authenticated:
@@ -504,9 +542,11 @@ class AmazonOrders:
             start_index = cursor["start_index"]
             time_filter = cursor["time_filter"]
             order_filter = cursor["order_filter"]
+            family_member_id = cursor.get("family_member_id")
         time_filter = self._history_filter_value(year, time_filter)
 
-        next_page: Optional[str] = self._order_history_url(None, start_index, time_filter, order_filter)
+        next_page: Optional[str] = self._order_history_url(None, start_index, time_filter, order_filter,
+                                                           family_member_id)
         current_index = int(start_index) if start_index else 0
 
         orders, next_page, current_index = asyncio.run(
@@ -516,6 +556,7 @@ class AmazonOrders:
             "start_index": current_index,
             "time_filter": time_filter,
             "order_filter": order_filter,
+            **({"family_member_id": family_member_id} if family_member_id else {}),
         } if next_page else None
 
         return PagedResults(orders, next_cursor)
@@ -550,7 +591,8 @@ class AmazonOrders:
                            year: Optional[int],
                            start_index: Optional[int],
                            time_filter: Optional[str],
-                           order_filter: Optional[str]) -> str:
+                           order_filter: Optional[str],
+                           family_member_id: Optional[str] = None) -> str:
         constants = self.config.constants
         filter_value = self._history_filter_value(year, time_filter)
         page = int(start_index) // constants.ORDER_HISTORY_PAGE_SIZE if start_index else 0
@@ -563,15 +605,27 @@ class AmazonOrders:
             f"&{constants.ORDER_FILTER_QUERY_PARAM}={quote(order_filter, safe='')}"
             if order_filter else ""
         )
+        optional_family_member = (
+            f"&{constants.FAMILY_MEMBER_QUERY_PARAM}={quote(family_member_id, safe='')}"
+            if family_member_id else ""
+        )
         return (
-            "{url}?{query_param}={filter_value}{optional_order_filter}{optional_page}"
+            "{url}?{query_param}={filter_value}{optional_order_filter}{optional_family_member}{optional_page}"
         ).format(
             url=constants.ORDER_HISTORY_URL,
             query_param=constants.HISTORY_FILTER_QUERY_PARAM,
             filter_value=filter_value,
             optional_order_filter=optional_order_filter,
+            optional_family_member=optional_family_member,
             optional_page=optional_page
         )
+
+    @staticmethod
+    def _parse_family_members(parsed: Tag,
+                              config: AmazonOrdersConfig) -> List[FamilyMember]:
+        members = [FamilyMember(tag, config)
+                   for tag in util.select(parsed, config.selectors.FAMILY_MEMBER_ENTITY_SELECTOR)]
+        return [member for member in members if member.id]
 
     @staticmethod
     def _parse_order_count(order_count_tag: Optional[Tag],

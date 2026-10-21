@@ -1,6 +1,7 @@
 <p align="center"><img alt="amazon-orders - A Python library (and CLI) for Amazon order history" src="https://amazon-orders.readthedocs.io/_images/logo.png" /></p>
 
 [![Version](https://img.shields.io/pypi/v/amazon-orders)](https://pypi.org/project/amazon-orders)
+[![PyPI - Downloads](https://img.shields.io/pypi/dm/amazon-orders)](https://pypistats.org/packages/amazon-orders)
 [![Python Versions](https://img.shields.io/pypi/pyversions/amazon-orders.svg)](https://pypi.org/project/amazon-orders)
 [![Coverage](https://img.shields.io/codecov/c/github/alexdlaird/amazon-orders)](https://codecov.io/gh/alexdlaird/amazon-orders)
 [![Build](https://img.shields.io/github/actions/workflow/status/alexdlaird/amazon-orders/build.yml)](https://github.com/alexdlaird/amazon-orders/actions/workflows/build.yml)
@@ -75,9 +76,10 @@ amazon-orders history --last-3-months
 
 ### Output Formats
 
-The `history`, `order`, `transactions`, `order-transactions`, and `gift-card-activity` commands accept
-`--output`, which renders Orders, Transactions, and Gift Card activity as `text` (the default), `json`,
-`yaml`, or `csv`. Progress messages are written to `stderr`, so redirecting `stdout` captures only the data.
+The `history`, `order`, `transactions`, `order-transactions`, `gift-card-activity`, and `family-members` commands
+accept `--output`, which renders Orders, Transactions, Gift Card activity, and Amazon Household members as `text` (the
+default), `json`, `yaml`, or `csv`. Progress messages are written to `stderr`, so redirecting `stdout` captures only
+the data.
 
 ```sh
 amazon-orders history --year 2023 --output json > orders.json
