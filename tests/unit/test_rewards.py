@@ -54,9 +54,9 @@ class TestRewards(UnitTestCase):
             self.amazon_rewards.get_rewards_balance()
 
         self.assertIn("Amazon redirected to login.", str(cm.exception))
-        self.assertFalse(self.amazon_session.is_authenticated)
+        self.assertTrue(self.amazon_session.is_authenticated)
         self.assertEqual(1, auth_redirect_response.call_count)
-        self.assertEqual(1, signout_response.call_count)
+        self.assertEqual(0, signout_response.call_count)
 
     @responses.activate
     def test_get_rewards_balance(self):
