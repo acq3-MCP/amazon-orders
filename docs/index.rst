@@ -151,8 +151,7 @@ sign-in or challenge page, and from Membership Central's own error page. Members
 page to this library's client, from datacenter and residential addresses alike, while a browser on the same
 account receives the payments, so :func:`~amazonorders.prime.AmazonPrime.get_prime_payments` is best-effort (it
 raises :class:`~amazonorders.exception.AmazonOrdersUnavailableError` on that page) and parsing a browser-fetched
-page is the reliable path. ``PrimePayment.total`` remains for one release as a deprecated alias of
-``grand_total``.
+page is the reliable path.
 
 Digital Orders
 --------------
