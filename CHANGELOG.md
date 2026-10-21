@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased](https://github.com/alexdlaird/amazon-orders/compare/4.9.1...HEAD)
+## [Unreleased](https://github.com/alexdlaird/amazon-orders/compare/4.9.2...HEAD)
 
 ### Added
 
@@ -29,6 +29,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- Synced with upstream 4.9.2. `Constants.BROWSER_HEADERS`, `REGION_CURRENCY_OVERRIDES`, `ZERO_DECIMAL_CURRENCY_SYMBOLS`, `region_auth_cookie()` and `region_currency_symbol()`, and each site's own auth cookie at sign-in, come from upstream; the fork's Rewards, Prime and Lists URLs are derived in upstream's restructured `_apply_domain`. Upstream's cookie jar now keeps each cookie's domain, path, secure flag and expiry (a legacy name-to-value jar loads with the site's domain), and is saved whenever a response changes it, unless another process saved it since. `PrimePayment.order_details_link` uses upstream's new `Constants.ORDER_ID_QUERY_PARAM`.
 - Synced with upstream 4.9.1. `progress_with_total` on `get_order_history()` and `get_order_history_page()`, and the CLI's `--progress` and `--no-progress`, come from upstream; the history walk reports progress once per page, after the next page is known, and keeps the fork's counters behind `last_history_pull`. A redirect to sign-in no longer logs the session out: `is_authenticated` stays `True`, the error's `meta` carries `redirect_url`, and the next `login()` logs out first. The fork's Lists, Prime and Rewards session-expiry tests expect that.
 - Synced with upstream 4.9.0 (and 4.8.1). `get_order_history_page()` and `PagedResults` come from upstream, as do `REQUEST_COOKIES`, `AMAZON_<KEY>` environment variables for every config value, and the browser choice for `login --browser`. Upstream restructured the history walk; the fork's `disableCsd=no-js` re-request, off-origin pager check, and `last_history_pull` counters are carried onto it. `last_history_pull` stays a record of `get_order_history()` calls only: a `get_order_history_page()` batch leaves it as it was.
 - Synced with upstream 4.8.0. `login --browser` and `PlaywrightBrowserLogin`, and package `Tracking` with `AmazonOrders.get_tracking()`, come from upstream. Upstream's stricter mypy settings now cover the fork's modules, which pass them unchanged.
@@ -53,6 +54,21 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - `digital-orders --year --all` now fails explicitly instead of silently ignoring `--year`.
 - `Parsable.safe_parse()` now also degrades a field on `TypeError` and `RecursionError`, which is what page-embedded JSON produces when it is valid but not the expected shape (the Order address fallback wraps it in `BeautifulSoup`) or nested deeply enough to exhaust the interpreter's stack (`json.loads` raises `RecursionError`, a `RuntimeError`, not a `ValueError`). Previously either aborted the whole entity instead of degrading one field. Required-field errors still propagate.
 - `AmazonRewards` now raises `AmazonOrdersError` rather than a bare `RecursionError` on deeply nested page data.
+
+## [4.9.2](https://github.com/alexdlaird/amazon-orders/compare/4.9.1...4.9.2) - 2026-10-15
+
+### Added
+
+- `Constants.BROWSER_HEADERS`, `REGION_CURRENCY_OVERRIDES`, `ZERO_DECIMAL_CURRENCY_SYMBOLS`, `region_auth_cookie()`, and `region_currency_symbol()`, so a `constants_class` can override a browser's headers, or a site's auth cookie or currency symbol.
+
+### Deprecated
+
+- `AwsWafForm`'s `_solve_token()` and `_solve_visual_captcha()`, renamed to `solve_token()` and `solve_visual_captcha()`.
+
+### Fixed
+
+- Sign-in on Amazon sites other than `.com`, `.ca`, `.co.jp`, `.co.uk`, `.com.au`, `.de`, `.in`, and `.it` now checks for that site's own auth cookie.
+- Bug fixes and stability improvements.
 
 ## [4.9.1](https://github.com/alexdlaird/amazon-orders/compare/4.9.0...4.9.1) - 2026-10-14
 
