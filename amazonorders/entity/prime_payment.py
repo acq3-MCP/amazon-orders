@@ -106,7 +106,8 @@ class PrimePayment(Parsable):
         if not self.order_number:
             return None
 
-        return f"{self.config.constants.ORDER_DETAILS_URL}?orderID={self.order_number}"
+        constants = self.config.constants
+        return f"{constants.ORDER_DETAILS_URL}?{constants.ORDER_ID_QUERY_PARAM}={self.order_number}"
 
     def _parse_receipt_link(self) -> Optional[str]:
         label_tag = util.select_one(self.parsed, self.config.selectors.FIELD_PRIME_PAYMENT_RECEIPTS_LABEL_SELECTOR)
