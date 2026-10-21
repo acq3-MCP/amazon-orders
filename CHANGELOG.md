@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased](https://github.com/alexdlaird/amazon-orders/compare/4.9.4...HEAD)
+## [Unreleased](https://github.com/alexdlaird/amazon-orders/compare/4.9.5...HEAD)
 
 ### Added
 
@@ -29,6 +29,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- Synced with upstream 4.9.5. `InvoicePdf`, `get_invoice_pdfs()`, `parse_invoice_pdfs()`, `download_invoice_pdf()` and the `invoice-pdfs` command, and amazon.de parsed in English, come from upstream. Upstream's Order parsing keeps every line of a `Recipient.address` in the unclassed-list layout, prefers the card over a Gift Card for `payment_method` when both paid, and skips a "Service cancelled" Order's totals; attribute values are read as text (`util.attribute_text()`), and sign-in refuses to send a password in a GET form. The fork's `resolve_site_url()` sits beside upstream's `attribute_text()`, and the fork's output renderers beside upstream's Invoice PDF and Family Member ones.
 - Synced with upstream 4.9.4. `FamilyMember`, `get_family_members()` / `parse_family_members()`, `family_member_id` on `get_order_history()` and `get_order_history_page()`, the `family-members` command, and passkey sign-in come from upstream, beside the fork's `parse_order_history_page()` and `last_history_pull`. Upstream's Order parsing reads the payment method and its last digits from a third layout (`[data-testid='payment-instrument-message']`, digits after `•`), and text output shows a $0.00 Grand Total (alexdlaird/amazon-orders#152).
 - Synced with upstream 4.9.3. `login()` now decides it is signed in from the nav greeting (`Selectors.NAV_GREETING_SELECTOR`) instead of searching the page for `nav-item-signout`; the rest is documentation (the `digital-orders` order filter) and upstream's CI.
 - Synced with upstream 4.9.2. `Constants.BROWSER_HEADERS`, `REGION_CURRENCY_OVERRIDES`, `ZERO_DECIMAL_CURRENCY_SYMBOLS`, `region_auth_cookie()` and `region_currency_symbol()`, and each site's own auth cookie at sign-in, come from upstream; the fork's Rewards, Prime and Lists URLs are derived in upstream's restructured `_apply_domain`. Upstream's cookie jar now keeps each cookie's domain, path, secure flag and expiry (a legacy name-to-value jar loads with the site's domain), and is saved whenever a response changes it, unless another process saved it since. `PrimePayment.order_details_link` uses upstream's new `Constants.ORDER_ID_QUERY_PARAM`.
@@ -56,6 +57,18 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - `digital-orders --year --all` now fails explicitly instead of silently ignoring `--year`.
 - `Parsable.safe_parse()` now also degrades a field on `TypeError` and `RecursionError`, which is what page-embedded JSON produces when it is valid but not the expected shape (the Order address fallback wraps it in `BeautifulSoup`) or nested deeply enough to exhaust the interpreter's stack (`json.loads` raises `RecursionError`, a `RuntimeError`, not a `ValueError`). Previously either aborted the whole entity instead of degrading one field. Required-field errors still propagate.
 - `AmazonRewards` now raises `AmazonOrdersError` rather than a bare `RecursionError` on deeply nested page data.
+
+## [4.9.5](https://github.com/alexdlaird/amazon-orders/compare/4.9.4...4.9.5) - 2026-10-20
+
+### Added
+
+- `InvoicePdf` entity, `AmazonOrders.get_invoice_pdfs()`, `parse_invoice_pdfs()`, and `download_invoice_pdf()`, and the `invoice-pdfs` CLI command (with `--download`), for an Order's invoice PDFs, including credit notes.
+- Parsing of amazon.de in English, with British English labels ("Postage & Packing", "Estimated VAT"), and its pages as test resources.
+
+### Fixed
+
+- `Recipient.address` keeps every line of the address, including the country, where it ran the first two together.
+- Bug fixes and stability improvements.
 
 ## [4.9.4](https://github.com/alexdlaird/amazon-orders/compare/4.9.3...4.9.4) - 2026-10-19
 
